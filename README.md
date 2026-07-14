@@ -4,7 +4,22 @@
 
 ## 先看这里：当前涂鸦 MCP 已经部署好了
 
-当前 Guardian MCP 已经部署在公网服务器上，并且已经通过临时 HTTPS 通道暴露给涂鸦平台。
+当前 Guardian MCP 已经部署在项目现有的公网 Ubuntu 服务器上，并且已经通过临时 HTTPS 通道暴露给涂鸦平台。
+
+### 当前部署信息（团队共用）
+
+| 项目 | 当前值 | 用途 |
+| --- | --- | --- |
+| 公网服务器 IP | `121.43.247.31` | 使用 MobaXterm / SSH 登录并部署 Agent 的服务器；也是现有康养后端所在服务器。 |
+| SSH 登录账号 | `root` | 上传代码、查看日志、重启 MCP 服务时使用。 |
+| SSH 登录密码 |  Ninelab2025| 这是服务器登录密码，不是涂鸦 MCP 密钥。 |
+| Agent 部署目录 | `/opt/guardian-agent` | 服务器上正在运行的 Guardian Agent 代码目录。 |
+| MCP 服务 | `guardian-mcp.service` | 运行 Agent/MCP；日常更新后只重启它。 |
+| 公网 HTTPS 通道 | `guardian-mcp-tunnel.service` | 将服务器内部的 MCP 转为涂鸦可访问的 HTTPS 地址；日常更新不要重启它。 |
+| 当前涂鸦公网地址 | `https://wesley-anthony-motorcycles-fitting.trycloudflare.com/mcp` | 涂鸦平台访问 Guardian MCP 的基础地址。 |
+| MCP 访问密钥 | 已写入下方“涂鸦 MCP 配置 JSON”的 `key` 参数 | 用于涂鸦访问 MCP，不等同于服务器 SSH 密码。 |
+
+换句话说，团队日常更新操作的目标服务器就是：`root@121.43.247.31`；代码更新到该服务器的 `/opt/guardian-agent` 目录即可。
 
 日常开发时，**不需要每次更新 Agent 代码都重新配置公网地址**。一般只需要：
 
@@ -13,6 +28,244 @@
 2. 重启 guardian-mcp.service
 3. 涂鸦平台继续使用同一个 MCP 配置
 ```
+
+这里有一个必须遵守的边界：**只重启 `guardian-mcp.service`，不要重启 `guardian-mcp-tunnel.service`。** 前者是 Agent 程序本身；后者保存当前临时公网通道。只更新前者，涂鸦端当前的公网 URL 和 MCP 密钥都不需要修改。
+
+更完整的日常更新步骤如下。
+
+### 日常 Agent 更新 SOP
+
+适用场景：
+
+```text
+改了 mcp_server.py
+改了 guardian_tools.py
+改了 agent/ 里的业务逻辑
+新增或修改 MCP 工具
+更新 SQLite 演示数据
+更新 static/ 原型页面
+```
+
+这些情况通常只需要更新 MCP 服务本体，不需要重新配置公网，也不需要重启 `guardian-mcp-tunnel.service`。
+
+#### 1. 先在本地确认新版代码可运行
+
+进入本地新版 Agent 目录：
+
+```powershell
+cd "D:\wlw\guardian_agent_prototype_new\guardian_agent"
+```
+
+运行单元测试：
+
+```powershell
+python -m unittest discover -s tests -p test_guardian_tools.py -v
+```
+
+做语法检查：
+
+```powershell
+python -m py_compile mcp_server.py guardian_tools.py server.py agent\db.py agent\night.py agent\health.py agent\memory.py agent\seed.py
+```
+
+如果这里失败，先修本地代码，不要部署到服务器。
+
+#### 2. 打包新版代码
+
+在本地 `D:\wlw` 目录执行打包。打包时建议排除缓存、日志、pid 文件：
+
+```powershell
+cd D:\wlw
+
+$stage = "guardian_agent_update_stage"
+if (Test-Path -LiteralPath $stage) {
+  Remove-Item -LiteralPath $stage -Recurse -Force
+}
+
+New-Item -ItemType Directory -Path $stage | Out-Null
+
+robocopy "guardian_agent_prototype_new\guardian_agent" $stage /E /XD __pycache__ /XF *.log *.pid *.pyc | Out-Null
+
+tar -czf guardian_agent_update.tar.gz -C $stage .
+```
+
+生成的文件：
+
+```text
+D:\wlw\guardian_agent_update.tar.gz
+```
+
+#### 3. 上传到公网服务器
+
+这里的服务器就是本 README 顶部列出的 `121.43.247.31`，登录账号为 `root`。上传目标建议放到：
+
+```text
+/tmp/guardian_agent_update.tar.gz
+```
+
+示例：
+
+```powershell
+scp D:\wlw\guardian_agent_update.tar.gz root@121.43.247.31:/tmp/guardian_agent_update.tar.gz
+```
+
+如果使用 MobaXterm，也可以直接把 `guardian_agent_update.tar.gz` 拖到服务器 `/tmp` 目录。
+
+#### 4. 在服务器上备份旧版本（需要使用MobaXterm）
+
+SSH 登录服务器步骤：
+1.打开MobaXterm
+2. 打开一个本地终端
+3.输入 ssh root@121.43.247.31 后回车
+4.输入密码Ninelab2025
+
+
+SSH 登录服务器后执行：
+
+```bash
+ts=$(date +%Y%m%d%H%M%S)
+systemctl stop guardian-mcp.service
+
+if [ -d /opt/guardian-agent ]; then
+  mv /opt/guardian-agent /opt/guardian-agent.backup.$ts
+fi
+```
+
+这样旧版本会备份成：
+
+```text
+/opt/guardian-agent.backup.时间戳
+```
+
+如果新版有问题，可以用这个目录回滚。
+
+#### 5. 解压新版代码到 /opt/guardian-agent
+
+继续在服务器上执行：
+
+```bash
+mkdir -p /opt/guardian-agent
+tar -xzf /tmp/guardian_agent_update.tar.gz -C /opt/guardian-agent
+chown -R root:root /opt/guardian-agent
+```
+
+如果依赖没变，通常不需要重新安装依赖。  
+如果 `requirements.txt` 改过，执行：
+
+```bash
+if [ ! -d /opt/guardian-agent/.venv ]; then
+  python3 -m venv /opt/guardian-agent/.venv
+fi
+
+/opt/guardian-agent/.venv/bin/python -m pip install -r /opt/guardian-agent/requirements.txt
+```
+
+#### 6. 重启 MCP 服务
+
+只重启 MCP：
+
+```bash
+systemctl start guardian-mcp.service
+systemctl is-active guardian-mcp.service
+```
+
+看到：
+
+```text
+active
+```
+
+说明 MCP 服务已经起来。
+
+一般不要重启：
+
+```bash
+guardian-mcp-tunnel.service
+```
+
+因为 tunnel 一重启，`trycloudflare.com` 临时公网地址可能变化；地址一变，涂鸦 MCP 配置里的 URL 就要更新。
+
+#### 7. 验证公网 MCP 是否正常
+
+先确认 tunnel 还活着：
+
+```bash
+systemctl is-active guardian-mcp-tunnel.service
+```
+
+应该返回：
+
+```text
+active
+```
+
+再用 MCP smoke test 验证工具列表：
+
+```bash
+export GUARDIAN_MCP_API_KEY=$(grep "^GUARDIAN_MCP_API_KEY=" /etc/guardian-agent.env | cut -d= -f2-)
+export GUARDIAN_MCP_AUTH_MODE=query
+export GUARDIAN_MCP_TEST_URL=https://wesley-anthony-motorcycles-fitting.trycloudflare.com/mcp
+
+cd /opt/guardian-agent
+.venv/bin/python tests/mcp_smoke.py
+```
+
+正常会看到：
+
+```text
+MCP initialization: OK
+Discovered tools: ...
+get_active_event: OK
+```
+
+如果新增了 MCP 工具，要确认 `Discovered tools` 里已经出现新工具名。
+
+#### 8. 在涂鸦平台刷新工具列表
+
+如果只是更新代码、修逻辑、改返回内容，涂鸦 MCP 配置 JSON 不用改。
+
+如果新增了工具，但涂鸦页面还只显示旧工具：
+
+```text
+1. 进入涂鸦 MCP 服务详情页
+2. 重新保存同一段 MCP JSON
+3. 切换到“工具”页刷新
+4. 退出该 MCP 服务页面再重新进入
+5. 仍不更新时，用同一段 JSON 新建一个自定义 MCP 服务
+```
+
+这是涂鸦平台工具 schema 缓存问题，不是公网部署问题。
+
+#### 9. 什么情况下才需要重新配置公网
+
+只有这些情况才需要重新获取公网地址或修改涂鸦 JSON：
+
+```text
+服务器重启
+guardian-mcp-tunnel.service 被重启
+cloudflared 临时通道失效
+更换服务器
+改用正式域名/HTTPS
+修改 GUARDIAN_MCP_API_KEY
+```
+
+普通 Agent 代码更新不需要重新配置公网。
+
+#### 10. 快速回滚
+
+如果新版部署后有问题，可以回滚到最近一次备份：
+
+```bash
+systemctl stop guardian-mcp.service
+
+mv /opt/guardian-agent /opt/guardian-agent.failed.$(date +%Y%m%d%H%M%S)
+mv /opt/guardian-agent.backup.时间戳 /opt/guardian-agent
+
+systemctl start guardian-mcp.service
+systemctl is-active guardian-mcp.service
+```
+
+回滚也不需要重启 `guardian-mcp-tunnel.service`，所以公网地址通常不会变化。
 
 只有下面几种情况才需要重新处理公网地址：
 

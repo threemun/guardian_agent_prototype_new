@@ -36,6 +36,25 @@ D:\wlw\guardian_agent_prototype(2)\guardian_agent
 3. 涂鸦平台继续使用上面的 MCP 配置
 ```
 
+详细更新流程建议按这个顺序：
+
+```text
+1. 本地进入 D:\wlw\guardian_agent_prototype_new\guardian_agent
+2. 运行 python -m unittest discover -s tests -p test_guardian_tools.py -v
+3. 运行 python -m py_compile mcp_server.py guardian_tools.py server.py agent\db.py agent\night.py agent\health.py agent\memory.py agent\seed.py
+4. 打包 guardian_agent 目录，排除 __pycache__、*.pyc、*.log、*.pid
+5. 上传压缩包到服务器 /tmp
+6. 停止 guardian-mcp.service
+7. 把旧 /opt/guardian-agent 备份为 /opt/guardian-agent.backup.时间戳
+8. 解压新版到 /opt/guardian-agent
+9. 如果 requirements.txt 改过，重新 pip install -r requirements.txt
+10. 启动 guardian-mcp.service
+11. 用 tests/mcp_smoke.py 验证公网 MCP 工具列表
+12. 去涂鸦工具页刷新；如果新增工具没出现，就重新保存同一段 MCP JSON
+```
+
+注意：这个流程一般不要重启 `guardian-mcp-tunnel.service`。只要 tunnel 不重启，当前 `trycloudflare.com` 公网地址通常不会变化，涂鸦 MCP 配置也不需要改。
+
 只有当 `guardian-mcp-tunnel.service` 重启、服务器重启、临时地址失效、或者改用正式域名时，才需要重新获取公网地址并更新涂鸦配置。
 
 ## 一、我已补齐的配置
