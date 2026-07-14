@@ -1,0 +1,12 @@
+.env.tuya.local
+.env.tuya.server
+.tuya-mcp-config.server.json
+.codex_ssh_askpass.cmd
+.guardian-mcp.pid
+.cloudflared.pid
+.tuya-mcp-url.txt
+*.stdout.log
+*.stderr.log
+*.deb
+*.tar
+tools/cloudflared.exe

@@ -1,0 +1,19 @@
+[Unit]
+Description=Guardian MCP temporary HTTPS tunnel
+After=network-online.target guardian-mcp.service
+Wants=network-online.target guardian-mcp.service
+
+[Service]
+Type=simple
+User=guardian-agent
+Group=guardian-agent
+ExecStart=/usr/bin/cloudflared tunnel --no-autoupdate --protocol http2 --url http://127.0.0.1:8000
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target

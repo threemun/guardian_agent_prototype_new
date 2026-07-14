@@ -1,0 +1,23 @@
+[Unit]
+Description=Guardian Care MCP Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=guardian-agent
+Group=guardian-agent
+WorkingDirectory=/opt/guardian-agent
+EnvironmentFile=/etc/guardian-agent.env
+ExecStart=/opt/guardian-agent/.venv/bin/python /opt/guardian-agent/mcp_server.py
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/guardian-agent
+
+[Install]
+WantedBy=multi-user.target
