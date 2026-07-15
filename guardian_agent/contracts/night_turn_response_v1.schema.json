@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://guardian.local/contracts/night-turn-response-1.0.schema.json",
+  "title": "NightTurnResponse 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "elder_id",
+    "event_id",
+    "intent",
+    "confidence",
+    "requires_clarification",
+    "event_status",
+    "risk_level",
+    "reply_text",
+    "tool_calls"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "1.0"
+    },
+    "elder_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "event_id": {
+      "type": "string",
+      "minLength": 1
+    },
+    "intent": {
+      "type": "string",
+      "enum": ["ok", "bathroom", "drink", "medication", "dizzy", "pain", "fall", "need_help", "unknown"]
+    },
+    "confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "requires_clarification": {
+      "type": "boolean"
+    },
+    "event_status": {
+      "type": "string",
+      "enum": [
+        "NEW",
+        "WAITING_ELDER_CONFIRM",
+        "CLARIFYING",
+        "MONITORING_RETURN",
+        "WAITING_FAMILY_CONFIRM",
+        "ESCALATED",
+        "CLOSED"
+      ]
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": ["INFO", "WARNING", "CRITICAL"]
+    },
+    "reply_text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 300
+    },
+    "tool_calls": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "reason": {
+      "type": "string",
+      "maxLength": 500
+    }
+  }
+}
+

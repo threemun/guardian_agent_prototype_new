@@ -1,0 +1,49 @@
+{
+  "contract_version": "1.0",
+  "description": "阶段 0 起夜老人回答验收集。它定义标准答案，不限定使用规则还是 LLM 实现。",
+  "cases": [
+    {"id": "ok_01", "text": "我没事，马上就回床上。", "expected_intent": "ok", "expected_status": "CLOSED", "expected_risk": "INFO", "requires_clarification": false, "must_escalate": false},
+    {"id": "ok_02", "text": "没关系，我好好的。", "expected_intent": "ok", "expected_status": "CLOSED", "expected_risk": "INFO", "requires_clarification": false, "must_escalate": false},
+    {"id": "ok_03", "text": "不用帮忙，我没有不舒服。", "expected_intent": "ok", "expected_status": "CLOSED", "expected_risk": "INFO", "requires_clarification": false, "must_escalate": false},
+    {"id": "ok_04", "text": "我挺好的，就是起来活动一下。", "expected_intent": "ok", "expected_status": "CLOSED", "expected_risk": "INFO", "requires_clarification": false, "must_escalate": false},
+
+    {"id": "bathroom_01", "text": "我去趟厕所。", "expected_intent": "bathroom", "expected_status": "MONITORING_RETURN", "expected_risk": "WARNING", "requires_clarification": false, "must_escalate": false},
+    {"id": "bathroom_02", "text": "起来方便一下。", "expected_intent": "bathroom", "expected_status": "MONITORING_RETURN", "expected_risk": "WARNING", "requires_clarification": false, "must_escalate": false},
+    {"id": "bathroom_03", "text": "我去卫生间，很快回来。", "expected_intent": "bathroom", "expected_status": "MONITORING_RETURN", "expected_risk": "WARNING", "requires_clarification": false, "must_escalate": false},
+    {"id": "bathroom_04", "text": "夜里想上个洗手间。", "expected_intent": "bathroom", "expected_status": "MONITORING_RETURN", "expected_risk": "WARNING", "requires_clarification": false, "must_escalate": false},
+    {"id": "bathroom_05", "text": "不用管我，我去解个手。", "expected_intent": "bathroom", "expected_status": "MONITORING_RETURN", "expected_risk": "WARNING", "requires_clarification": false, "must_escalate": false},
+
+    {"id": "drink_01", "text": "我起来喝口水。", "expected_intent": "drink", "expected_status": "MONITORING_RETURN", "expected_risk": "WARNING", "requires_clarification": false, "must_escalate": false},
+    {"id": "drink_02", "text": "有点口渴，找点水喝。", "expected_intent": "drink", "expected_status": "MONITORING_RETURN", "expected_risk": "WARNING", "requires_clarification": false, "must_escalate": false},
+    {"id": "drink_03", "text": "嘴巴干，我去倒杯水。", "expected_intent": "drink", "expected_status": "MONITORING_RETURN", "expected_risk": "WARNING", "requires_clarification": false, "must_escalate": false},
+    {"id": "drink_04", "text": "我想喝两口水再睡。", "expected_intent": "drink", "expected_status": "MONITORING_RETURN", "expected_risk": "WARNING", "requires_clarification": false, "must_escalate": false},
+
+    {"id": "medication_01", "text": "我起来找降压药。", "expected_intent": "medication", "expected_status": "CLARIFYING", "expected_risk": "WARNING", "requires_clarification": true, "must_escalate": false},
+    {"id": "medication_02", "text": "该吃药了，我找一下药盒。", "expected_intent": "medication", "expected_status": "CLARIFYING", "expected_risk": "WARNING", "requires_clarification": true, "must_escalate": false},
+    {"id": "medication_03", "text": "我想再吃一片药。", "expected_intent": "medication", "expected_status": "CLARIFYING", "expected_risk": "WARNING", "requires_clarification": true, "must_escalate": false},
+
+    {"id": "dizzy_01", "text": "我有点头晕。", "expected_intent": "dizzy", "expected_status": "WAITING_FAMILY_CONFIRM", "expected_risk": "CRITICAL", "requires_clarification": false, "must_escalate": true},
+    {"id": "dizzy_02", "text": "站起来天旋地转的。", "expected_intent": "dizzy", "expected_status": "WAITING_FAMILY_CONFIRM", "expected_risk": "CRITICAL", "requires_clarification": false, "must_escalate": true},
+    {"id": "dizzy_03", "text": "我没事，就是有点晕。", "expected_intent": "dizzy", "expected_status": "WAITING_FAMILY_CONFIRM", "expected_risk": "CRITICAL", "requires_clarification": false, "must_escalate": true},
+    {"id": "dizzy_04", "text": "脚下发飘，站不太稳。", "expected_intent": "dizzy", "expected_status": "WAITING_FAMILY_CONFIRM", "expected_risk": "CRITICAL", "requires_clarification": false, "must_escalate": true},
+
+    {"id": "pain_01", "text": "我胸口有点疼。", "expected_intent": "pain", "expected_status": "WAITING_FAMILY_CONFIRM", "expected_risk": "CRITICAL", "requires_clarification": false, "must_escalate": true},
+    {"id": "pain_02", "text": "肚子疼得厉害。", "expected_intent": "pain", "expected_status": "WAITING_FAMILY_CONFIRM", "expected_risk": "CRITICAL", "requires_clarification": false, "must_escalate": true},
+    {"id": "pain_03", "text": "不用叫人，我就是胸闷。", "expected_intent": "pain", "expected_status": "WAITING_FAMILY_CONFIRM", "expected_risk": "CRITICAL", "requires_clarification": false, "must_escalate": true},
+
+    {"id": "fall_01", "text": "我摔倒了。", "expected_intent": "fall", "expected_status": "ESCALATED", "expected_risk": "CRITICAL", "requires_clarification": false, "must_escalate": true},
+    {"id": "fall_02", "text": "刚才滑了一跤，现在起不来。", "expected_intent": "fall", "expected_status": "ESCALATED", "expected_risk": "CRITICAL", "requires_clarification": false, "must_escalate": true},
+    {"id": "fall_03", "text": "不用担心，我好像摔了一下。", "expected_intent": "fall", "expected_status": "ESCALATED", "expected_risk": "CRITICAL", "requires_clarification": false, "must_escalate": true},
+
+    {"id": "help_01", "text": "快来帮帮我。", "expected_intent": "need_help", "expected_status": "WAITING_FAMILY_CONFIRM", "expected_risk": "CRITICAL", "requires_clarification": false, "must_escalate": true},
+    {"id": "help_02", "text": "腿没劲，扶我一下。", "expected_intent": "need_help", "expected_status": "WAITING_FAMILY_CONFIRM", "expected_risk": "CRITICAL", "requires_clarification": false, "must_escalate": true},
+    {"id": "help_03", "text": "我站不起来了。", "expected_intent": "need_help", "expected_status": "WAITING_FAMILY_CONFIRM", "expected_risk": "CRITICAL", "requires_clarification": false, "must_escalate": true},
+    {"id": "help_04", "text": "我喘不过气，快叫人。", "expected_intent": "need_help", "expected_status": "WAITING_FAMILY_CONFIRM", "expected_risk": "CRITICAL", "requires_clarification": false, "must_escalate": true},
+
+    {"id": "unknown_01", "text": "", "expected_intent": "unknown", "expected_status": "CLARIFYING", "expected_risk": "WARNING", "requires_clarification": true, "must_escalate": false},
+    {"id": "unknown_02", "text": "嗯……那个……", "expected_intent": "unknown", "expected_status": "CLARIFYING", "expected_risk": "WARNING", "requires_clarification": true, "must_escalate": false},
+    {"id": "unknown_03", "text": "我也说不清楚。", "expected_intent": "unknown", "expected_status": "CLARIFYING", "expected_risk": "WARNING", "requires_clarification": true, "must_escalate": false},
+    {"id": "unknown_04", "text": "我就是起来一下。", "expected_intent": "unknown", "expected_status": "CLARIFYING", "expected_risk": "WARNING", "requires_clarification": true, "must_escalate": false}
+  ]
+}
+

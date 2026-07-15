@@ -1,0 +1,125 @@
+{
+  "contract_version": "1.0",
+  "description": "Guardian Agent 第一批必须支持的六个起夜模拟场景。",
+  "scenarios": [
+    {
+      "code": "normal_bathroom",
+      "name": "正常上厕所",
+      "elder_id": "E001",
+      "messages": [
+        {
+          "event_type": "LEAVE_BED",
+          "device_type": "sleep_band",
+          "data": {"no_body_seconds": 180, "location": "bedroom"}
+        },
+        {
+          "event_type": "PRESENCE_CHANGED",
+          "device_type": "radar",
+          "data": {"someone_exists": true, "resident_status": "moving", "fall_status": false}
+        }
+      ],
+      "elder_reply": "我去趟卫生间，不用担心。",
+      "expected_intent": "bathroom",
+      "expected_status": "MONITORING_RETURN",
+      "expected_risk": "WARNING",
+      "follow_up_event": "RETURN_TO_BED",
+      "final_status": "CLOSED"
+    },
+    {
+      "code": "normal_drink",
+      "name": "起床喝水",
+      "elder_id": "E001",
+      "messages": [
+        {
+          "event_type": "LEAVE_BED",
+          "device_type": "sleep_band",
+          "data": {"no_body_seconds": 120, "location": "bedroom"}
+        }
+      ],
+      "elder_reply": "有点口渴，我起来喝口水。",
+      "expected_intent": "drink",
+      "expected_status": "MONITORING_RETURN",
+      "expected_risk": "WARNING",
+      "follow_up_event": "RETURN_TO_BED",
+      "final_status": "CLOSED"
+    },
+    {
+      "code": "dizzy",
+      "name": "老人头晕",
+      "elder_id": "E002",
+      "messages": [
+        {
+          "event_type": "LEAVE_BED",
+          "device_type": "sleep_band",
+          "data": {"no_body_seconds": 240, "location": "bedroom"}
+        }
+      ],
+      "elder_reply": "我没事，就是站起来有点晕。",
+      "expected_intent": "dizzy",
+      "expected_status": "WAITING_FAMILY_CONFIRM",
+      "expected_risk": "CRITICAL",
+      "follow_up_event": null,
+      "final_status": "WAITING_FAMILY_CONFIRM"
+    },
+    {
+      "code": "need_help",
+      "name": "老人主动求助",
+      "elder_id": "E003",
+      "messages": [
+        {
+          "event_type": "LEAVE_BED",
+          "device_type": "sleep_band",
+          "data": {"no_body_seconds": 300, "location": "bedroom"}
+        }
+      ],
+      "elder_reply": "腿使不上劲，快来扶我一下。",
+      "expected_intent": "need_help",
+      "expected_status": "WAITING_FAMILY_CONFIRM",
+      "expected_risk": "CRITICAL",
+      "follow_up_event": null,
+      "final_status": "WAITING_FAMILY_CONFIRM"
+    },
+    {
+      "code": "no_response",
+      "name": "老人无响应",
+      "elder_id": "E002",
+      "messages": [
+        {
+          "event_type": "LEAVE_BED",
+          "device_type": "sleep_band",
+          "data": {"no_body_seconds": 600, "location": "bedroom"}
+        },
+        {
+          "event_type": "NO_RESPONSE_TIMEOUT",
+          "device_type": "system",
+          "data": {"attempts": 2, "silence_seconds": 3}
+        }
+      ],
+      "elder_reply": "",
+      "expected_intent": "unknown",
+      "expected_status": "WAITING_FAMILY_CONFIRM",
+      "expected_risk": "CRITICAL",
+      "follow_up_event": null,
+      "final_status": "WAITING_FAMILY_CONFIRM"
+    },
+    {
+      "code": "fall_detected",
+      "name": "疑似跌倒",
+      "elder_id": "E003",
+      "messages": [
+        {
+          "event_type": "FALL_DETECTED",
+          "device_type": "radar",
+          "data": {"fall_status": true, "someone_exists": true, "location": "bedroom"}
+        }
+      ],
+      "elder_reply": "我摔倒了，起不来。",
+      "expected_intent": "fall",
+      "expected_status": "ESCALATED",
+      "expected_risk": "CRITICAL",
+      "follow_up_event": null,
+      "final_status": "ESCALATED"
+    }
+  ]
+}
+

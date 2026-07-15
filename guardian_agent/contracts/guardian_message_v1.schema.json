@@ -1,0 +1,81 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://guardian.local/contracts/guardian-message-1.0.schema.json",
+  "title": "GuardianMessage 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "message_id",
+    "source_system",
+    "device_type",
+    "device_id",
+    "elder_id",
+    "event_type",
+    "occurred_at",
+    "data",
+    "raw_payload"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "message_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "source_system": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "device_type": {
+      "type": "string",
+      "enum": ["sleep_band", "radar", "voice_client", "simulator", "system"]
+    },
+    "device_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "elder_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "LEAVE_BED",
+        "RETURN_TO_BED",
+        "PRESENCE_CHANGED",
+        "FALL_DETECTED",
+        "NO_RESPONSE_TIMEOUT",
+        "VOICE_TRANSCRIPT",
+        "VITALS_RECORDED",
+        "DAILY_REPORT_REQUESTED",
+        "WEEKLY_REPORT_REQUESTED"
+      ]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "received_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "data": {
+      "type": "object"
+    },
+    "raw_payload": {
+      "type": "object"
+    },
+    "trace_id": {
+      "type": "string",
+      "maxLength": 128
+    }
+  }
+}
+

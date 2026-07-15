@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://guardian.local/contracts/night-turn-request-1.0.schema.json",
+  "title": "NightTurnRequest 1.0",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract_version", "elder_id", "session_id", "text", "source"],
+  "properties": {
+    "contract_version": {
+      "const": "1.0"
+    },
+    "elder_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "event_id": {
+      "type": "string",
+      "maxLength": 128
+    },
+    "session_id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128
+    },
+    "text": {
+      "type": "string",
+      "maxLength": 1000
+    },
+    "source": {
+      "type": "string",
+      "enum": ["voice_lab", "elder_app", "web_debug", "tuya_agent", "test"]
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  }
+}
+
