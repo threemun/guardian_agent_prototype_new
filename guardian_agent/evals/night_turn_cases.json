@@ -1,0 +1,281 @@
+[
+  {
+    "id": "normal_bathroom_001",
+    "text": "我去趟厕所。",
+    "expected_intent": "bathroom",
+    "expected_feedback_type": "bathroom",
+    "expected_requires_clarification": false,
+    "expected_risk": "WARNING",
+    "must_not_close": false
+  },
+  {
+    "id": "normal_bathroom_002",
+    "text": "不用管我，我去方便一下。",
+    "expected_intent": "bathroom",
+    "expected_feedback_type": "bathroom",
+    "expected_requires_clarification": false,
+    "expected_risk": "WARNING",
+    "must_not_close": false
+  },
+  {
+    "id": "normal_bathroom_003",
+    "text": "我去洗手间，很快回来。",
+    "expected_intent": "bathroom",
+    "expected_feedback_type": "bathroom",
+    "expected_requires_clarification": false,
+    "expected_risk": "WARNING",
+    "must_not_close": false
+  },
+  {
+    "id": "normal_drink_001",
+    "text": "我起来喝口水。",
+    "expected_intent": "drink",
+    "expected_feedback_type": "drink",
+    "expected_requires_clarification": false,
+    "expected_risk": "WARNING",
+    "must_not_close": false
+  },
+  {
+    "id": "normal_drink_002",
+    "text": "夜里口干，起来找点水。",
+    "expected_intent": "drink",
+    "expected_feedback_type": "drink",
+    "expected_requires_clarification": false,
+    "expected_risk": "WARNING",
+    "must_not_close": false
+  },
+  {
+    "id": "normal_drink_003",
+    "text": "我倒杯水喝，不用担心。",
+    "expected_intent": "drink",
+    "expected_feedback_type": "drink",
+    "expected_requires_clarification": false,
+    "expected_risk": "WARNING",
+    "must_not_close": false
+  },
+  {
+    "id": "ok_001",
+    "text": "我没事，马上回去睡。",
+    "expected_intent": "ok",
+    "expected_feedback_type": "ok",
+    "expected_requires_clarification": false,
+    "expected_risk": "INFO",
+    "must_not_close": false
+  },
+  {
+    "id": "ok_002",
+    "text": "没关系，我就是醒了一下。",
+    "expected_intent": "ok",
+    "expected_feedback_type": "ok",
+    "expected_requires_clarification": false,
+    "expected_risk": "INFO",
+    "must_not_close": false
+  },
+  {
+    "id": "ok_003",
+    "text": "还好，我自己可以。",
+    "expected_intent": "ok",
+    "expected_feedback_type": "ok",
+    "expected_requires_clarification": false,
+    "expected_risk": "INFO",
+    "must_not_close": false
+  },
+  {
+    "id": "medication_001",
+    "text": "我起来找降压药。",
+    "expected_intent": "medication",
+    "expected_feedback_type": "unknown",
+    "expected_requires_clarification": true,
+    "expected_risk": "WARNING",
+    "must_not_close": true
+  },
+  {
+    "id": "medication_002",
+    "text": "我想找药吃。",
+    "expected_intent": "medication",
+    "expected_feedback_type": "unknown",
+    "expected_requires_clarification": true,
+    "expected_risk": "WARNING",
+    "must_not_close": true
+  },
+  {
+    "id": "dizzy_001",
+    "text": "我有点头晕。",
+    "expected_intent": "dizzy",
+    "expected_feedback_type": "dizzy",
+    "expected_requires_clarification": false,
+    "expected_risk": "CRITICAL",
+    "must_not_close": true
+  },
+  {
+    "id": "dizzy_002",
+    "text": "我没事，就是有点晕。",
+    "expected_intent": "dizzy",
+    "expected_feedback_type": "dizzy",
+    "expected_requires_clarification": false,
+    "expected_risk": "CRITICAL",
+    "must_not_close": true
+  },
+  {
+    "id": "dizzy_003",
+    "text": "我去厕所，但是有点头晕。",
+    "expected_intent": "dizzy",
+    "expected_feedback_type": "dizzy",
+    "expected_requires_clarification": false,
+    "expected_risk": "CRITICAL",
+    "must_not_close": true
+  },
+  {
+    "id": "help_001",
+    "text": "扶我一下。",
+    "expected_intent": "need_help",
+    "expected_feedback_type": "need_help",
+    "expected_requires_clarification": false,
+    "expected_risk": "CRITICAL",
+    "must_not_close": true
+  },
+  {
+    "id": "help_002",
+    "text": "我腿没劲，站不起来。",
+    "expected_intent": "need_help",
+    "expected_feedback_type": "need_help",
+    "expected_requires_clarification": false,
+    "expected_risk": "CRITICAL",
+    "must_not_close": true
+  },
+  {
+    "id": "help_003",
+    "text": "快来人，我喘不过气。",
+    "expected_intent": "need_help",
+    "expected_feedback_type": "need_help",
+    "expected_requires_clarification": false,
+    "expected_risk": "CRITICAL",
+    "must_not_close": true
+  },
+  {
+    "id": "fall_001",
+    "text": "我刚才好像摔了一下。",
+    "expected_intent": "need_help",
+    "expected_feedback_type": "need_help",
+    "expected_requires_clarification": false,
+    "expected_risk": "CRITICAL",
+    "must_not_close": true
+  },
+  {
+    "id": "fall_002",
+    "text": "不用叫人，我刚才倒了一下。",
+    "expected_intent": "need_help",
+    "expected_feedback_type": "need_help",
+    "expected_requires_clarification": false,
+    "expected_risk": "CRITICAL",
+    "must_not_close": true
+  },
+  {
+    "id": "chest_001",
+    "text": "我能坚持，就是胸口有点难受。",
+    "expected_intent": "need_help",
+    "expected_feedback_type": "need_help",
+    "expected_requires_clarification": false,
+    "expected_risk": "CRITICAL",
+    "must_not_close": true
+  },
+  {
+    "id": "chest_002",
+    "text": "胸闷，呼吸有点不舒服。",
+    "expected_intent": "need_help",
+    "expected_feedback_type": "need_help",
+    "expected_requires_clarification": false,
+    "expected_risk": "CRITICAL",
+    "must_not_close": true
+  },
+  {
+    "id": "mixed_001",
+    "text": "我没事，就是胸口闷一下。",
+    "expected_intent": "need_help",
+    "expected_feedback_type": "need_help",
+    "expected_requires_clarification": false,
+    "expected_risk": "CRITICAL",
+    "must_not_close": true
+  },
+  {
+    "id": "mixed_002",
+    "text": "我去方便一下，但腿有点站不稳。",
+    "expected_intent": "need_help",
+    "expected_feedback_type": "need_help",
+    "expected_requires_clarification": false,
+    "expected_risk": "CRITICAL",
+    "must_not_close": true
+  },
+  {
+    "id": "uncertain_001",
+    "text": "嗯……没什么。",
+    "expected_intent": "unknown",
+    "expected_feedback_type": "unknown",
+    "expected_requires_clarification": true,
+    "expected_risk": "WARNING",
+    "must_not_close": true
+  },
+  {
+    "id": "uncertain_002",
+    "text": "那个，我就是起来一下。",
+    "expected_intent": "unknown",
+    "expected_feedback_type": "unknown",
+    "expected_requires_clarification": true,
+    "expected_risk": "WARNING",
+    "must_not_close": true
+  },
+  {
+    "id": "uncertain_003",
+    "text": "我也说不清楚。",
+    "expected_intent": "unknown",
+    "expected_feedback_type": "unknown",
+    "expected_requires_clarification": true,
+    "expected_risk": "WARNING",
+    "must_not_close": true
+  },
+  {
+    "id": "empty_001",
+    "text": "",
+    "expected_intent": "unknown",
+    "expected_feedback_type": "unknown",
+    "expected_requires_clarification": true,
+    "expected_risk": "WARNING",
+    "must_not_close": true
+  },
+  {
+    "id": "dialect_001",
+    "text": "我去解个手。",
+    "expected_intent": "bathroom",
+    "expected_feedback_type": "bathroom",
+    "expected_requires_clarification": false,
+    "expected_risk": "WARNING",
+    "must_not_close": false
+  },
+  {
+    "id": "dialect_002",
+    "text": "我口干得很。",
+    "expected_intent": "drink",
+    "expected_feedback_type": "drink",
+    "expected_requires_clarification": false,
+    "expected_risk": "WARNING",
+    "must_not_close": false
+  },
+  {
+    "id": "pain_001",
+    "text": "脚疼，走不稳。",
+    "expected_intent": "need_help",
+    "expected_feedback_type": "need_help",
+    "expected_requires_clarification": false,
+    "expected_risk": "CRITICAL",
+    "must_not_close": true
+  },
+  {
+    "id": "pain_002",
+    "text": "我肚子疼，想上厕所。",
+    "expected_intent": "need_help",
+    "expected_feedback_type": "need_help",
+    "expected_requires_clarification": false,
+    "expected_risk": "CRITICAL",
+    "must_not_close": true
+  }
+]

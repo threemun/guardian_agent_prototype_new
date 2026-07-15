@@ -36,7 +36,11 @@ async function loadDashboard(preferredEventId = null, elderId = state.selectedEl
   state.selectedElderId = elderId || state.selectedElderId || "E001";
   const params = new URLSearchParams();
   params.set("elder_id", state.selectedElderId);
-  const requestedEventId = preferredEventId || state.selectedEventId;
+  let requestedEventId = preferredEventId || state.selectedEventId;
+  const current = selectedEvent();
+  if (!preferredEventId && current?.status === "CLOSED") {
+    requestedEventId = "";
+  }
   if (requestedEventId) params.set("selected_event_id", requestedEventId);
   const data = await api(`/api/v1/dashboard?${params.toString()}`);
   state.dashboard = data;
@@ -341,6 +345,15 @@ async function handleAction(action) {
     result = await api("/api/v1/mock/night-leave-bed", { method: "POST", body: JSON.stringify({ scenario: "standard", elder_id: state.selectedElderId }) });
     showToast("已触发夜间离床事件");
     await loadDashboard(result.event.id, result.event.elder_id);
+  } else if (action === "guardian-scenario") {
+    const scenarioCode = document.getElementById("scenarioSelect")?.value || "normal_bathroom";
+    result = await api(`/api/v1/guardian/scenarios/${encodeURIComponent(scenarioCode)}`, {
+      method: "POST",
+      body: JSON.stringify({ elder_id: state.selectedElderId }),
+    });
+    const event = latestEventFromScenario(result);
+    showToast(`已触发标准场景：${result.expectation?.label || scenarioCode}`);
+    await loadDashboard(event?.id || null, event?.elder_id || state.selectedElderId);
   } else if (action === "sos") {
     result = await api("/api/v1/mock/sos", { method: "POST", body: JSON.stringify({ elder_id: state.selectedElderId }) });
     showToast("已触发 SOS 事件");
@@ -360,6 +373,15 @@ async function handleAction(action) {
     result = await api(`/api/v1/events/${state.selectedEventId}/timeout`, { method: "POST", body: JSON.stringify({}) });
     showToast("已模拟无响应超时");
     await loadDashboard(result.event.id, result.event.elder_id);
+  } else if (action === "return-to-bed") {
+    ensureSelected();
+    result = await api(`/api/v1/events/${state.selectedEventId}/return-to-bed`, { method: "POST", body: JSON.stringify({}) });
+    showToast("已确认返床");
+    await loadDashboard(result.event.id, result.event.elder_id);
+  } else if (action === "night-turn") {
+    result = await submitNightTurn();
+    showToast(result.reply_text || "老人原话已处理");
+    await loadDashboard(result.event_id, result.elder_id);
   } else if (action === "close") {
     ensureSelected();
     result = await api(`/api/v1/events/${state.selectedEventId}/close`, { method: "POST", body: JSON.stringify({}) });
@@ -377,6 +399,38 @@ async function handleAction(action) {
     await searchMemories();
     showToast("已筛选回忆");
   }
+}
+
+async function submitNightTurn() {
+  const input = document.getElementById("nightTurnText");
+  const text = input?.value?.trim();
+  if (!text) throw new Error("请先输入老人原话");
+  const selected = selectedEvent();
+  return api("/api/v1/guardian/conversations/night-turn", {
+    method: "POST",
+    body: JSON.stringify({
+      elder_id: state.selectedElderId,
+      event_id: selected && selected.status !== "CLOSED" ? selected.id : "",
+      text,
+      source: "web_demo",
+    }),
+  });
+}
+
+function latestEventFromScenario(result) {
+  const rows = [...(result.results || [])].reverse();
+  const withEvent = rows.find((item) => item.event);
+  return withEvent ? withEvent.event : null;
+}
+
+function selectedEvent() {
+  return (state.dashboard?.events || []).find((event) => event.id === state.selectedEventId) || state.dashboard?.selected_event || null;
+}
+
+function startAutoRefresh() {
+  window.setInterval(() => {
+    loadDashboard(null, state.selectedElderId).catch(() => {});
+  }, 3000);
 }
 
 async function handleMemorySample(mockKey) {
@@ -410,7 +464,12 @@ document.addEventListener("click", async (event) => {
   const action = event.target.closest("[data-action]")?.dataset.action;
   const feedback = event.target.closest("[data-feedback]")?.dataset.feedback;
   const memorySample = event.target.closest("[data-memory-sample]")?.dataset.memorySample;
+  const utterance = event.target.closest("[data-utterance]")?.dataset.utterance;
   try {
+    if (utterance) {
+      const input = document.getElementById("nightTurnText");
+      if (input) input.value = utterance;
+    }
     if (action) await handleAction(action);
     if (feedback) await handleFeedback(feedback);
     if (memorySample) await handleMemorySample(memorySample);
@@ -419,4 +478,17 @@ document.addEventListener("click", async (event) => {
   }
 });
 
-loadDashboard().catch((error) => showToast(error.message));
+document.getElementById("nightTurnText")?.addEventListener("keydown", async (event) => {
+  if (event.key !== "Enter") return;
+  try {
+    const result = await submitNightTurn();
+    showToast(result.reply_text || "老人原话已处理");
+    await loadDashboard(result.event_id, result.elder_id);
+  } catch (error) {
+    showToast(error.message);
+  }
+});
+
+loadDashboard()
+  .then(startAutoRefresh)
+  .catch((error) => showToast(error.message));

@@ -65,6 +65,34 @@
           <button class="btn primary" data-action="health">触发健康异常</button>
           <button class="btn ghost" data-action="reset">重置演示</button>
         </div>
+        <div class="workflow-row">
+          <label class="control-label">
+            <span>标准场景</span>
+            <select id="scenarioSelect">
+              <option value="normal_bathroom">正常去洗手间</option>
+              <option value="normal_drink">起床喝水</option>
+              <option value="dizzy">起夜头晕</option>
+              <option value="need_help">主动求助</option>
+              <option value="no_response">无响应超时</option>
+              <option value="fall_detected">疑似跌倒</option>
+              <option value="return_to_bed">已返床</option>
+              <option value="uncertain_reply">回答不明确</option>
+            </select>
+          </label>
+          <button class="btn primary" data-action="guardian-scenario">触发标准场景</button>
+          <button class="btn success" data-action="return-to-bed">确认返床</button>
+        </div>
+        <div class="voice-turn-row">
+          <label class="control-label voice-input">
+            <span>老人原话</span>
+            <input id="nightTurnText" type="text" value="我去趟卫生间，不用担心" />
+          </label>
+          <button class="btn primary" data-action="night-turn">提交原话</button>
+          <button class="btn ghost" data-utterance="我去趟卫生间，不用担心">去洗手间</button>
+          <button class="btn ghost" data-utterance="我起来喝口水">喝水</button>
+          <button class="btn soft-warning" data-utterance="我没事，就是有点头晕">头晕</button>
+          <button class="btn soft-danger" data-utterance="我腿没劲，扶我一下">需要帮助</button>
+        </div>
         <div class="button-row muted-row">
           <button class="btn ghost" data-feedback="ok">老人反馈：我没事</button>
           <button class="btn ghost" data-feedback="bathroom">老人反馈：去洗手间</button>

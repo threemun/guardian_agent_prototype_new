@@ -7,11 +7,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
+from agent.conversation import handle_night_turn
 from agent.db import DB_PATH, get_conn, init_db, row_to_dict, rows_to_dicts, today_str
 from agent.health import HealthAgent
 from agent.memory import MemoryAgent
+from agent.message import SUPPORTED_EVENT_TYPES, process_guardian_message
 from agent.night import NightCareAgent, STATUS_LABELS
 from agent.seed import seed_demo_data
+from simulator.scenarios import SCENARIO_EXPECTATIONS, scenario_payload
 
 
 ROOT_DIR = Path(__file__).resolve().parent
@@ -129,6 +132,16 @@ class AppHandler(BaseHTTPRequestHandler):
             night_agent = NightCareAgent(conn)
             health_agent = HealthAgent(conn)
             memory_agent = MemoryAgent(conn)
+            if path == "/api/v1/guardian/messages":
+                return process_guardian_message(conn, body)
+            if path.startswith("/api/v1/guardian/scenarios/"):
+                scenario_code = path.split("/")[-1]
+                elder_id = body.get("elder_id", "E001")
+                payload = scenario_payload(scenario_code, elder_id)
+                results = [process_guardian_message(conn, message) for message in payload["messages"]]
+                return {**payload, "results": results}
+            if path == "/api/v1/guardian/conversations/night-turn":
+                return handle_night_turn(conn, body)
             if path == "/api/v1/messages":
                 message_type = body.get("message_type") or body.get("event_type")
                 if message_type in {"sensor_event", "POSSIBLE_LEAVE_BED", "SOS_BUTTON"}:
@@ -162,6 +175,8 @@ class AppHandler(BaseHTTPRequestHandler):
                     return {"event": night_agent.apply_feedback(event_id, body.get("feedback_type", "ok"))}
                 if action == "timeout":
                     return {"event": night_agent.simulate_timeout(event_id)}
+                if action == "return-to-bed":
+                    return {"event": night_agent.confirm_return_to_bed(event_id, source="web_demo")}
                 if action == "close":
                     return {"event": night_agent.close_event(event_id)}
         raise ValueError(f"unknown route: {path}")
@@ -242,7 +257,11 @@ def dashboard_payload(conn, elder_id: str, selected_event_id: str = "") -> dict:
     events = [decorate_event(conn, row_to_dict(row)) for row in conn.execute("SELECT * FROM events ORDER BY created_at DESC").fetchall()]
     selected = next((event for event in events if event["id"] == selected_event_id), None)
     if selected is None:
-        selected = next((event for event in events if event["elder_id"] == elder_id), None) or (events[0] if events else None)
+        selected = (
+            next((event for event in events if event["elder_id"] == elder_id and event["status"] != "CLOSED"), None)
+            or next((event for event in events if event["elder_id"] == elder_id), None)
+            or (events[0] if events else None)
+        )
     if selected:
         selected = NightCareAgent(conn).get_event(selected["id"])
     counts = {
@@ -297,6 +316,9 @@ def parse_range_header(range_header: str, total_size: int) -> tuple[int, int]:
 def message_contract() -> dict:
     return {
         "ingest_endpoint": "POST /api/v1/messages",
+        "guardian_message_endpoint": "POST /api/v1/guardian/messages",
+        "guardian_scenario_endpoint": "POST /api/v1/guardian/scenarios/{scenario_code}",
+        "night_turn_endpoint": "POST /api/v1/guardian/conversations/night-turn",
         "result_endpoints": [
             "GET /api/v1/events",
             "GET /api/v1/events/{event_id}",
@@ -307,6 +329,12 @@ def message_contract() -> dict:
             "GET /api/v1/memories/recordings",
             "GET /api/v1/recordings/{recording_id}/audio",
         ],
+        "guardian_message": {
+            "schema_version": "1.0",
+            "required_fields": ["message_id", "source_system", "device_type", "elder_id", "event_type", "occurred_at", "data"],
+            "supported_event_types": sorted(SUPPORTED_EVENT_TYPES),
+            "scenario_codes": sorted(SCENARIO_EXPECTATIONS),
+        },
         "supported_messages": [
             {
                 "message_type": "sensor_event",

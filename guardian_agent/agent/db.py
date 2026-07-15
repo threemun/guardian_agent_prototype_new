@@ -28,6 +28,13 @@ JSON_COLUMNS = {
 }
 
 
+class GuardianConnection(sqlite3.Connection):
+    def __exit__(self, exc_type, exc_value, traceback) -> bool:
+        result = super().__exit__(exc_type, exc_value, traceback)
+        self.close()
+        return result
+
+
 def now_iso() -> str:
     return dt.datetime.now().replace(microsecond=0).isoformat()
 
@@ -50,7 +57,7 @@ def loads(value: str | None, default: Any = None) -> Any:
 
 
 def get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, factory=GuardianConnection)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
