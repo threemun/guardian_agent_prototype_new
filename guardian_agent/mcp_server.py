@@ -24,7 +24,7 @@ mcp = FastMCP(
     "Guardian Care MCP",
     instructions=(
         "Use these tools to query Guardian elder-care events, submit normalized "
-        "elder feedback, record Tuya device actions, and read or generate health "
+        "elder feedback classified by the Tuya LLM, record device actions, and read or generate health "
         "daily/weekly reports. Never invent an event_id. Health reports are only "
         "for daily care reference and must not be treated as a medical diagnosis."
     ),
@@ -94,6 +94,10 @@ def night_care_workflow(
     device_action: str = "",
     device_success: bool = True,
     device_detail: str = "",
+    confidence: str = "",
+    timeout_attempts: int = 1,
+    scenario_code: str = "",
+    guardian_message_json: str = "",
 ) -> dict:
     """
     Run the night-care workflow through one tool.
@@ -101,7 +105,13 @@ def night_care_workflow(
     action options:
     list_elders, get_active_event, get_event_detail, get_event_timeline,
     submit_feedback, handle_elder_reply, request_emergency_help,
-    record_device_action, close_event.
+    confirm_return_to_bed, no_response_timeout, record_device_action, close_event,
+    ingest_guardian_event, simulate_guardian_scenario.
+
+    For elder speech, call handle_elder_reply directly with feedback_type,
+    original_text and confidence. event_id may be empty; the server resolves
+    the elder's active event. Do not call get_active_event first and do not use
+    the legacy local night_turn action from a Tuya Agent.
     """
     return guardian_tools.night_care_workflow(
         action=action,
@@ -113,6 +123,10 @@ def night_care_workflow(
         device_action=device_action,
         device_success=device_success,
         device_detail=device_detail,
+        confidence=confidence,
+        timeout_attempts=timeout_attempts,
+        scenario_code=scenario_code,
+        guardian_message_json=guardian_message_json,
     )
 
 

@@ -196,8 +196,17 @@ def _dispatch_message(conn, message: dict[str, Any]) -> dict[str, Any]:
 
     if event_type == GuardianEventType.NO_RESPONSE_TIMEOUT.value:
         event_id = str(data.get("event_id") or _latest_open_event_id(conn, elder_id))
-        event = night_agent.simulate_timeout(event_id)
-        return {"event": event, "processed_action": "escalated_no_response_timeout"}
+        event = night_agent.simulate_timeout(
+            event_id,
+            attempts=int(data.get("attempts") or 1),
+            source=message["source_system"],
+        )
+        processed_action = (
+            "requested_final_clarification"
+            if event["status"] == "CLARIFYING"
+            else "escalated_no_response_timeout"
+        )
+        return {"event": event, "processed_action": processed_action}
 
     if event_type == GuardianEventType.FALL_DETECTED.value or (
         event_type == GuardianEventType.PRESENCE_CHANGED.value and data.get("fall_status") is True
@@ -301,4 +310,3 @@ def _latest_open_event_id(conn, elder_id: str) -> str:
     if not event_id:
         raise ValueError(f"no active event found for elder_id: {elder_id}")
     return event_id
-

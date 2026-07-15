@@ -3,220 +3,100 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Guardian Edge Agent</title>
-    <link rel="stylesheet" href="/static/styles.css" />
+    <title>Guardian 起夜流程调试台</title>
+    <link rel="stylesheet" href="/static/styles.css?v=20260715-3" />
   </head>
   <body>
-    <aside class="sidebar">
-      <div class="brand">管理平台</div>
-      <nav>
-        <a>首页</a>
-        <a>系统管理</a>
-        <a>长者档案</a>
-        <a>呼叫中心</a>
-        <a>报警信息</a>
-        <a class="active">Agent看板</a>
-      </nav>
-    </aside>
-
-    <main class="app">
+    <main class="app-shell">
       <header class="topbar">
         <div>
-          <h1>Guardian Edge Agent</h1>
-          <p>独居老人边缘照护智能体看板</p>
+          <h1>Guardian 起夜流程调试台</h1>
+          <p>模拟硬件信号、文字对话、状态机与超时流程</p>
         </div>
-        <div class="top-actions">
-          <span id="modeBadge" class="mode">Mock 演示模式</span>
-          <span class="node">云端 + 边缘节点</span>
+        <div class="header-actions">
+          <label>老人
+            <select id="elderSelect">
+              <option value="E001">E001 王秀兰</option>
+              <option value="E002">E002 李建国</option>
+              <option value="E003">E003 周美华</option>
+            </select>
+          </label>
+          <button class="button secondary" data-action="reset">重置调试数据</button>
         </div>
       </header>
 
-      <section class="summary-grid">
-        <article class="summary-card">
-          <span>今日事件</span>
-          <strong id="countToday">0</strong>
-          <small>Agent Case</small>
-        </article>
-        <article class="summary-card">
-          <span>待老人确认</span>
-          <strong id="countElder">0</strong>
-          <small>老人端反馈</small>
-        </article>
-        <article class="summary-card">
-          <span>已升级</span>
-          <strong id="countEscalated">0</strong>
-          <small>紧急/子女确认</small>
-        </article>
-        <article class="summary-card">
-          <span>已关闭</span>
-          <strong id="countClosed">0</strong>
-          <small>闭环归档</small>
-        </article>
+      <section class="flow-strip" id="flowSteps" aria-label="起夜流程">
+        <div class="flow-step" data-flow-state="signal"><strong>1</strong><span>硬件触发</span></div>
+        <div class="flow-step" data-flow-state="ask"><strong>2</strong><span>等待回答</span></div>
+        <div class="flow-step" data-flow-state="understand"><strong>3</strong><span>理解意图</span></div>
+        <div class="flow-step" data-flow-state="monitor"><strong>4</strong><span>返床监听</span></div>
+        <div class="flow-step" data-flow-state="result"><strong>5</strong><span>关闭或升级</span></div>
       </section>
 
-      <section class="panel console">
-        <div class="panel-title">
-          <h2>演示控制台</h2>
-          <p>用于答辩现场一键触发事件和模拟反馈</p>
-        </div>
-        <div class="button-row">
-          <button class="btn warning" data-action="night">触发夜间离床</button>
-          <button class="btn danger" data-action="sos">触发 SOS</button>
-          <button class="btn primary" data-action="health">触发健康异常</button>
-          <button class="btn ghost" data-action="reset">重置演示</button>
-        </div>
-        <div class="workflow-row">
-          <label class="control-label">
-            <span>标准场景</span>
-            <select id="scenarioSelect">
-              <option value="normal_bathroom">正常去洗手间</option>
-              <option value="normal_drink">起床喝水</option>
-              <option value="dizzy">起夜头晕</option>
-              <option value="need_help">主动求助</option>
-              <option value="no_response">无响应超时</option>
-              <option value="fall_detected">疑似跌倒</option>
-              <option value="return_to_bed">已返床</option>
-              <option value="uncertain_reply">回答不明确</option>
-            </select>
-          </label>
-          <button class="btn primary" data-action="guardian-scenario">触发标准场景</button>
-          <button class="btn success" data-action="return-to-bed">确认返床</button>
-        </div>
-        <div class="voice-turn-row">
-          <label class="control-label voice-input">
-            <span>老人原话</span>
-            <input id="nightTurnText" type="text" value="我去趟卫生间，不用担心" />
-          </label>
-          <button class="btn primary" data-action="night-turn">提交原话</button>
-          <button class="btn ghost" data-utterance="我去趟卫生间，不用担心">去洗手间</button>
-          <button class="btn ghost" data-utterance="我起来喝口水">喝水</button>
-          <button class="btn soft-warning" data-utterance="我没事，就是有点头晕">头晕</button>
-          <button class="btn soft-danger" data-utterance="我腿没劲，扶我一下">需要帮助</button>
-        </div>
-        <div class="button-row muted-row">
-          <button class="btn ghost" data-feedback="ok">老人反馈：我没事</button>
-          <button class="btn ghost" data-feedback="bathroom">老人反馈：去洗手间</button>
-          <button class="btn ghost" data-feedback="drink">老人反馈：喝水</button>
-          <button class="btn soft-warning" data-feedback="dizzy">老人反馈：头晕</button>
-          <button class="btn soft-danger" data-feedback="need_help">老人反馈：需要帮助</button>
-          <button class="btn danger" data-action="timeout">模拟无响应超时</button>
-          <button class="btn success" data-action="close">关闭事件</button>
-        </div>
-      </section>
-
-      <section class="workspace">
-        <article class="panel risk-panel">
-          <div class="section-head">
-            <h2>风险卡片</h2>
-            <span id="eventTotal">0 条事件</span>
+      <section class="control-grid">
+        <article class="panel">
+          <div class="panel-heading"><h2>1. 模拟硬件</h2><span>GuardianMessage 1.0</span></div>
+          <div class="two-fields">
+            <label>离床秒数<input id="noBodySeconds" type="number" min="1" value="180" /></label>
+            <label>位置<select id="signalLocation"><option value="bedroom">卧室</option><option value="bathroom">卫生间</option><option value="living_room">客厅</option></select></label>
           </div>
-          <div id="eventList" class="event-list"></div>
+          <div class="button-grid">
+            <button class="button warning" data-signal="leave-bed">睡眠带：离床</button>
+            <button class="button danger" data-signal="fall">雷达：疑似跌倒</button>
+            <button class="button success" data-signal="return-to-bed">睡眠带：已返床</button>
+            <button class="button secondary" data-signal="presence">雷达：检测到活动</button>
+          </div>
+          <details class="json-box"><summary>查看最近一次硬件消息</summary><pre id="lastSignalPayload">尚未发送信号</pre></details>
+        </article>
+
+        <article class="panel">
+          <div class="panel-heading"><h2>2. 老人文字回答</h2><span id="agentModeLabel">正在读取处理模式</span></div>
+          <label>输入老人原话<textarea id="nightTurnText" rows="4" placeholder="例如：我去趟卫生间，不用担心">我去趟卫生间，不用担心</textarea></label>
+          <div class="quick-replies">
+            <button data-utterance="我去趟卫生间，不用担心">去卫生间</button>
+            <button data-utterance="我起来喝口水">喝水</button>
+            <button data-utterance="我没事，就是有点头晕">头晕</button>
+            <button data-utterance="我也说不清楚">不明确</button>
+            <button data-utterance="我摔倒了，起不来">跌倒</button>
+          </div>
+          <button id="nightTurnButton" class="button primary wide" data-action="night-turn">提交文字</button>
+          <p id="agentInputNote" class="muted">正在读取 Agent 接入状态。</p>
+        </article>
+
+        <article class="panel timer-panel">
+          <div class="panel-heading"><h2>3. 超时控制</h2><span>服务端计时</span></div>
+          <div id="timerClock" class="timer-clock"><strong>--</strong><span>未启动</span></div>
+          <label>等待超时（秒）<input id="timerSeconds" type="number" min="1" max="3600" step="1" value="15" placeholder="15" inputmode="numeric" /></label>
+          <label class="check-row"><input id="autoTimer" type="checkbox" checked /><span>状态变化后自动计时</span></label>
+          <div class="timer-buttons">
+            <button class="button primary" data-timer="start">启动/重启</button>
+            <button class="button secondary" data-timer="cancel">取消</button>
+            <button class="button danger" data-timer="fire">立即超时</button>
+          </div>
+          <p id="timerNote" class="muted">触发离床后开始等待老人回答。</p>
+        </article>
+      </section>
+
+      <section class="result-grid">
+        <article class="panel current-panel">
+          <div class="panel-heading"><h2>当前状态</h2><span id="currentEventId">尚未开始测试</span></div>
+          <div id="eventDetail" class="event-detail"><p class="empty">点击“睡眠带：离床”开始一次新测试。</p></div>
+          <div id="voiceAlert"></div>
+          <div id="activeEventMarker"></div>
+        </article>
+
+        <article class="panel conversation-panel">
+          <div class="panel-heading"><h2>Agent 判断</h2><span id="agentResultLabel">标准化输出</span></div>
+          <div id="conversationTurns" class="scroll-area"><p class="empty">等待老人回答进入 Agent。</p></div>
         </article>
 
         <article class="panel timeline-panel">
-          <div class="section-head">
-            <h2>Agent 决策时间线</h2>
-            <span>观察、计划、工具调用、反馈、闭环</span>
-          </div>
-          <div id="timeline" class="timeline"></div>
+          <div class="panel-heading"><h2>状态机时间线</h2><span>本次测试</span></div>
+          <div id="timeline" class="scroll-area"><p class="empty">尚无状态变化。</p></div>
         </article>
-
-        <article class="panel detail-panel">
-          <h2>事件详情</h2>
-          <div id="eventDetail" class="detail"></div>
-        </article>
-      </section>
-
-      <section class="reports">
-        <article class="panel report-card">
-          <div class="section-head">
-            <h2>今日健康日报</h2>
-            <button class="mini-btn" data-action="daily">重新生成</button>
-          </div>
-          <div id="dailyReport"></div>
-        </article>
-        <article class="panel report-card">
-          <div class="section-head">
-            <h2>本周健康周报</h2>
-            <button class="mini-btn" data-action="weekly">重新生成</button>
-          </div>
-          <div id="weeklyReport"></div>
-        </article>
-        <article class="panel report-card">
-          <h2>网页端接口位</h2>
-          <div id="contractBox" class="contract"></div>
-        </article>
-      </section>
-
-      <section class="memory-board">
-        <div class="memory-hero">
-          <div>
-            <span class="memory-kicker">Family Memory Archive</span>
-            <h2>家庭回忆库</h2>
-            <p>从通话录音中提取人物、时间、事件与情感，把日常谈话沉淀成可查询的家庭记忆。</p>
-          </div>
-          <div class="memory-actions">
-            <button class="memory-btn" data-memory-sample="random">随机家常通话</button>
-            <button class="memory-btn" data-memory-sample="mom_childhood_courtyard">妈妈讲童年</button>
-            <button class="memory-btn" data-memory-sample="video_call_reunion">视频团圆饭</button>
-          </div>
-        </div>
-
-        <div class="memory-filters">
-          <input id="memoryQuery" type="search" placeholder="搜索关键词：小时候、工作、煮汤..." />
-          <select id="memoryPerson">
-            <option value="">全部人物</option>
-          </select>
-          <select id="memoryEmotion">
-            <option value="">全部情感</option>
-          </select>
-          <select id="memoryTopic">
-            <option value="">全部主题</option>
-          </select>
-          <label class="memory-date-label">发生起<input id="memoryStart" type="date" /></label>
-          <label class="memory-date-label">发生止<input id="memoryEnd" type="date" /></label>
-          <label class="memory-date-label">录音起<input id="recordedStart" type="date" /></label>
-          <label class="memory-date-label">录音止<input id="recordedEnd" type="date" /></label>
-          <button class="memory-search" data-action="memory-search">查询回忆</button>
-        </div>
-
-        <div class="memory-layout">
-          <div id="memoryList" class="memory-list"></div>
-          <aside class="memory-side">
-            <h3>通话录音入口</h3>
-            <p>真实接入时，服务器向 <code>POST /api/v1/messages</code> 发送 <code>call_recording</code> 消息，带上音频地址即可。</p>
-            <div id="recordingList" class="recording-list"></div>
-          </aside>
-        </div>
-      </section>
-
-      <section class="panel data-panel">
-        <div class="section-head">
-          <h2>最近日常数据记录</h2>
-          <span>SQLite 模拟数据</span>
-        </div>
-        <div class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>时间</th>
-                <th>老人</th>
-                <th>体温</th>
-                <th>心率</th>
-                <th>血压</th>
-                <th>血糖</th>
-                <th>血氧</th>
-                <th>睡眠</th>
-                <th>备注</th>
-              </tr>
-            </thead>
-            <tbody id="vitalRows"></tbody>
-          </table>
-        </div>
       </section>
     </main>
-
     <div id="toast" class="toast"></div>
-    <script src="/static/app.js"></script>
+    <script src="/static/app.js?v=20260715-4"></script>
   </body>
 </html>

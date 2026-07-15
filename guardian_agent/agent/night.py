@@ -21,6 +21,44 @@ RISK_LABELS = {
     "CRITICAL": "紧急",
 }
 
+LOW_CONFIDENCE_THRESHOLD = 0.65
+VALID_NIGHT_FEEDBACK_TYPES = {
+    "ok",
+    "bathroom",
+    "drink",
+    "medication",
+    "dizzy",
+    "pain",
+    "fall",
+    "need_help",
+    "unknown",
+}
+FALL_GUARDRAIL_TERMS = ("摔倒", "跌倒", "滑倒", "摔了一跤", "倒在地上")
+CRITICAL_GUARDRAIL_TERMS = (
+    "起不来",
+    "站不起来",
+    "胸痛",
+    "胸疼",
+    "胸口疼",
+    "呼吸困难",
+    "喘不过气",
+    "头晕",
+    "眩晕",
+    "救命",
+    "帮帮我",
+)
+
+
+def _safety_feedback_override(text: str) -> str:
+    """Apply only deterministic high-risk guardrails, not general intent parsing."""
+
+    normalized = (text or "").replace(" ", "")
+    if any(term in normalized for term in FALL_GUARDRAIL_TERMS):
+        return "fall"
+    if any(term in normalized for term in CRITICAL_GUARDRAIL_TERMS):
+        return "need_help"
+    return ""
+
 
 class NightCareAgent:
     """Fixed-flow night-care agent for the early SQLite prototype."""
@@ -82,13 +120,6 @@ class NightCareAgent:
         description = "凌晨检测到床上无人，雷达检测卧室活动，已开启夜灯并询问老人意图。"
         actions = ["open_night_light", "ask_elder_intent", "wait_elder_feedback"]
 
-        if scenario in {"no_response", "critical"} or (night_time and no_body_seconds >= 600 and not radar_movement):
-            risk_level = "CRITICAL"
-            status = "WAITING_FAMILY_CONFIRM"
-            confidence = 0.86
-            description = "夜间离床超过阈值且老人未及时反馈，已通知子女并标记为紧急关注。"
-            actions = ["open_night_light", "ask_elder_intent", "notify_family", "create_case"]
-
         event = self._create_event(
             elder_id=elder_id,
             event_type="POSSIBLE_LEAVE_BED",
@@ -117,10 +148,6 @@ class NightCareAgent:
         )
         self._add_step(event["id"], "tool", "打开夜灯", "调用智能场景降低环境风险。", "SceneTool")
         self._add_step(event["id"], "tool", "询问老人意图", "老人端展示确认按钮，等待反馈。", "ElderAskTool")
-        if risk_level == "CRITICAL":
-            self._notify_family(event["id"], elder["primary_contact"], "起夜事件需确认", description)
-            self._add_step(event["id"], "tool", "通知子女端", "已推送紧急确认卡片到子女端 App。", "NotifyTool")
-            self._add_step(event["id"], "tool", "创建事件工单", "已生成待确认事件，保留全链路证据。", "CaseTool")
         self.conn.commit()
         return self.get_event(event["id"])
 
@@ -190,16 +217,34 @@ class NightCareAgent:
         feedback_type: str,
         original_text: str = "",
         source: str = "elder_app",
+        confidence: float | None = None,
     ) -> dict[str, Any]:
         event = self.get_event(event_id)
         if not event:
             raise ValueError("event not found")
+        if event["status"] == "CLOSED":
+            raise ValueError("event is already closed")
+        if feedback_type not in VALID_NIGHT_FEEDBACK_TYPES:
+            allowed = ", ".join(sorted(VALID_NIGHT_FEEDBACK_TYPES))
+            raise ValueError(f"invalid feedback_type; expected one of: {allowed}")
+        if confidence is not None and not 0 <= confidence <= 1:
+            raise ValueError("confidence must be between 0 and 1")
+
+        requested_feedback_type = feedback_type
+        safety_override = _safety_feedback_override(original_text)
+        if safety_override:
+            feedback_type = safety_override
+        elif confidence is not None and confidence < LOW_CONFIDENCE_THRESHOLD:
+            feedback_type = "unknown"
 
         feedback_map = {
-            "ok": ("老人反馈：我没事", "老人确认当前无不适，事件可关闭。"),
+            "ok": ("老人反馈：我没事", "老人表示当前无明显不适，继续等待设备确认返床。"),
             "bathroom": ("老人反馈：去洗手间", "记录起夜原因，进入返床观察。"),
             "drink": ("老人反馈：喝水", "记录起夜原因，短时观察即可。"),
+            "medication": ("老人反馈：起床用药", "用药意图需要再确认药物和当前身体状况。"),
             "dizzy": ("老人反馈：头晕", "老人反馈头晕，升级为紧急关注。"),
+            "pain": ("老人反馈：疼痛", "老人反馈明显疼痛，升级为紧急关注。"),
+            "fall": ("老人反馈：跌倒", "老人反馈已经或疑似跌倒，立即升级处理。"),
             "need_help": ("老人反馈：需要帮助", "老人主动请求帮助，通知子女与护理人员。"),
             "unknown": ("老人反馈：未明确", "老人回答不明确，进入一次追问确认。"),
         }
@@ -210,21 +255,42 @@ class NightCareAgent:
             title,
             desc,
             "ElderAskTool",
-            {"feedback_type": feedback_type, "original_text": original_text, "source": source},
+            {
+                "requested_feedback_type": requested_feedback_type,
+                "feedback_type": feedback_type,
+                "original_text": original_text,
+                "source": source,
+                "confidence": confidence,
+                "safety_override": bool(safety_override),
+            },
         )
 
-        if feedback_type == "ok":
-            self._update_event(event_id, status="CLOSED", risk_level="INFO", closed=True, description="老人已确认无事，事件关闭并归档。")
-        elif feedback_type in {"bathroom", "drink"}:
-            self._update_event(event_id, status="MONITORING_RETURN", risk_level="WARNING", description=desc)
-            self._add_step(event_id, "plan", "设置返床观察", "15 分钟内持续关注是否返床。", "CaseTool")
-        elif feedback_type in {"dizzy", "need_help"}:
+        if event["status"] in {"WAITING_FAMILY_CONFIRM", "ESCALATED"}:
+            if feedback_type == "fall" and event["status"] != "ESCALATED":
+                self._escalate_fall(event_id, event, desc, source)
+            else:
+                self._add_step(
+                    event_id,
+                    "guardrail",
+                    "高风险事件禁止自动降级",
+                    "事件已经进入高风险流程，老人回答不会自动关闭或降低风险，等待人工确认。",
+                    "RiskGuardrail",
+                )
+        elif feedback_type == "fall":
+            self._escalate_fall(event_id, event, desc, source)
+        elif feedback_type in {"dizzy", "pain", "need_help"}:
             self._update_event(event_id, status="WAITING_FAMILY_CONFIRM", risk_level="CRITICAL", description=desc)
             self._add_step(event_id, "tool", "通知子女端", "已升级为紧急确认。", "NotifyTool")
             self._notify_family(event_id, event["elder"]["primary_contact"], "老人需要关注", desc)
-        elif feedback_type == "unknown":
-            self._update_event(event_id, status="CLARIFYING", risk_level="WARNING", description=desc)
-            self._add_step(event_id, "plan", "追问老人意图", "仅追问一次；如仍无明确反馈，则升级给子女确认。", "ElderAskTool")
+        elif feedback_type in {"ok", "bathroom", "drink"}:
+            self._update_event(event_id, status="MONITORING_RETURN", risk_level="WARNING", description=desc)
+            self._add_step(event_id, "plan", "设置返床观察", "15 分钟内持续关注是否返床。", "CaseTool")
+        elif feedback_type in {"medication", "unknown"}:
+            if event["status"] == "CLARIFYING":
+                self._escalate_unresolved(event_id, event, "老人二次回答仍不明确，已通知子女确认。")
+            else:
+                self._update_event(event_id, status="CLARIFYING", risk_level="WARNING", description=desc)
+                self._add_step(event_id, "plan", "追问老人意图", "仅追问一次；如仍无明确反馈，则升级给子女确认。", "ElderAskTool")
         self.conn.commit()
         return self.get_event(event_id)
 
@@ -252,19 +318,40 @@ class NightCareAgent:
         self.conn.commit()
         return self.get_event(event_id)
 
-    def simulate_timeout(self, event_id: str) -> dict[str, Any]:
+    def simulate_timeout(
+        self,
+        event_id: str,
+        attempts: int = 1,
+        source: str = "simulator",
+    ) -> dict[str, Any]:
         event = self.get_event(event_id)
         if not event:
             raise ValueError("event not found")
-        self._add_step(event_id, "guardrail", "模拟无响应超时", "老人端长时间未反馈，进入升级流程。")
-        self._update_event(
+        if event["status"] == "CLOSED":
+            raise ValueError("event is already closed")
+        if attempts < 1:
+            raise ValueError("attempts must be at least 1")
+        if event["status"] in {"WAITING_FAMILY_CONFIRM", "ESCALATED"}:
+            return event
+
+        self._add_step(
             event_id,
-            status="WAITING_FAMILY_CONFIRM",
-            risk_level="CRITICAL",
-            description="老人端无响应超时，已通知子女确认。",
+            "guardrail",
+            "无响应或返床超时",
+            "计时器到期，状态机根据当前阶段决定追问或升级。",
+            "TimeoutGuardrail",
+            {"attempts": attempts, "source": source, "status_before": event["status"]},
         )
-        self._add_step(event_id, "tool", "通知子女端", "已推送无响应超时提醒。", "NotifyTool")
-        self._notify_family(event_id, event["elder"]["primary_contact"], "无响应超时", "老人端未按时反馈，请尽快确认。")
+        if event["status"] == "WAITING_ELDER_CONFIRM" and attempts < 2:
+            self._update_event(
+                event_id,
+                status="CLARIFYING",
+                risk_level="WARNING",
+                description="首次询问未收到明确回答，正在进行最后一次追问。",
+            )
+            self._add_step(event_id, "plan", "最后一次追问", "仅再询问一次，仍无响应则通知子女。", "ElderAskTool")
+        else:
+            self._escalate_unresolved(event_id, event, "老人持续无响应或未在观察时间内返床，已通知子女确认。")
         self.conn.commit()
         return self.get_event(event_id)
 
@@ -277,6 +364,10 @@ class NightCareAgent:
         event = self.get_event(event_id)
         if not event:
             raise ValueError("event not found")
+        if event["status"] == "CLOSED":
+            return event
+        if event["type"] != "POSSIBLE_LEAVE_BED":
+            raise ValueError("RETURN_TO_BED can only close a night leave-bed event")
         self._add_step(
             event_id,
             "observe",
@@ -315,6 +406,8 @@ class NightCareAgent:
         event = self.get_event(event_id)
         if not event:
             raise ValueError("event not found")
+        if event["status"] == "CLOSED":
+            raise ValueError("closed event cannot be escalated")
         self._add_step(
             event_id,
             "guardrail",
@@ -329,14 +422,50 @@ class NightCareAgent:
         self.conn.commit()
         return self.get_event(event_id)
 
-    def close_event(self, event_id: str) -> dict[str, Any]:
+    def close_event(
+        self,
+        event_id: str,
+        source: str = "system",
+        confirmed_by_human: bool = False,
+    ) -> dict[str, Any]:
         event = self.get_event(event_id)
         if not event:
             raise ValueError("event not found")
-        self._add_step(event_id, "close", "关闭事件", "事件已由演示控制台关闭并归档。", "CaseTool")
+        if event["status"] == "CLOSED":
+            return event
+        if event["risk_level"] == "CRITICAL" and not confirmed_by_human:
+            raise ValueError("high-risk event requires human confirmation before closing")
+        if event["type"] == "POSSIBLE_LEAVE_BED" and not confirmed_by_human:
+            raise ValueError("night event requires RETURN_TO_BED or human confirmation before closing")
+        self._add_step(
+            event_id,
+            "close",
+            "人工确认关闭事件" if confirmed_by_human else "关闭事件",
+            "事件已确认解决并归档。",
+            "CaseTool",
+            {"source": source, "confirmed_by_human": confirmed_by_human},
+        )
         self._update_event(event_id, status="CLOSED", closed=True, description="事件已关闭归档。")
         self.conn.commit()
         return self.get_event(event_id)
+
+    def _escalate_fall(self, event_id: str, event: dict[str, Any], description: str, source: str) -> None:
+        self._update_event(event_id, status="ESCALATED", risk_level="CRITICAL", description=description)
+        self._add_step(
+            event_id,
+            "guardrail",
+            "跌倒事件直接升级",
+            "跳过普通追问，立即进入高风险处置。",
+            "RiskGuardrail",
+            {"source": source},
+        )
+        self._add_step(event_id, "tool", "通知子女端", "跌倒事件已推送给子女或护理人员。", "NotifyTool")
+        self._notify_family(event_id, event["elder"]["primary_contact"], "老人疑似跌倒", description)
+
+    def _escalate_unresolved(self, event_id: str, event: dict[str, Any], description: str) -> None:
+        self._update_event(event_id, status="WAITING_FAMILY_CONFIRM", risk_level="CRITICAL", description=description)
+        self._add_step(event_id, "tool", "通知子女端", "已推送无响应或未返床提醒。", "NotifyTool")
+        self._notify_family(event_id, event["elder"]["primary_contact"], "起夜事件需确认", description)
 
     def get_event(self, event_id: str) -> dict[str, Any] | None:
         event = row_to_dict(self.conn.execute("SELECT * FROM events WHERE id = ?", (event_id,)).fetchone())

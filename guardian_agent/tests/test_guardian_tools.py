@@ -52,11 +52,18 @@ class GuardianToolsTest(unittest.TestCase):
         self.assertEqual(feedback_step["result"]["original_text"], "我去一下洗手间")
         self.assertEqual(feedback_step["result"]["source"], "tuya_agent")
 
+    def test_unknown_feedback_enters_clarifying_state(self) -> None:
+        event = guardian_tools.get_active_event("E001")["event"]
+
+        result = guardian_tools.submit_elder_feedback(event["id"], "unknown")
+
+        self.assertEqual(result["event"]["status"], "CLARIFYING")
+
     def test_invalid_feedback_type_is_rejected(self) -> None:
         event = guardian_tools.get_active_event("E001")["event"]
 
         with self.assertRaisesRegex(ValueError, "invalid feedback_type"):
-            guardian_tools.submit_elder_feedback(event["id"], "unknown")
+            guardian_tools.submit_elder_feedback(event["id"], "unsupported")
 
     def test_elder_event_mismatch_is_rejected(self) -> None:
         event = guardian_tools.get_active_event("E001")["event"]
@@ -112,6 +119,7 @@ class GuardianToolsTest(unittest.TestCase):
             elder_id="E002",
             feedback_type="drink",
             original_text="我起来喝口水",
+            confidence="0.9",
         )
 
         self.assertEqual(result["workflow"], "night_care")

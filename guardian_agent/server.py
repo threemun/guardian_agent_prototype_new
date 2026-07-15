@@ -2,23 +2,56 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from agent.conversation import handle_night_turn
-from agent.db import DB_PATH, get_conn, init_db, row_to_dict, rows_to_dicts, today_str
+from agent.db import DB_PATH, get_conn, init_db, loads, row_to_dict, rows_to_dicts, today_str
+from agent.debug_timers import DebugTimerRegistry
 from agent.health import HealthAgent
 from agent.memory import MemoryAgent
 from agent.message import SUPPORTED_EVENT_TYPES, process_guardian_message
 from agent.night import NightCareAgent, STATUS_LABELS
 from agent.seed import seed_demo_data
+from agent.voice import voice_alert_command
 from simulator.scenarios import SCENARIO_EXPECTATIONS, scenario_payload
+from simulator.event_factory import guardian_message
 
 
 ROOT_DIR = Path(__file__).resolve().parent
 STATIC_DIR = ROOT_DIR / "static"
+DEBUG_TIMERS = DebugTimerRegistry()
+CONVERSATION_PROVIDER = os.getenv("GUARDIAN_CONVERSATION_PROVIDER", "local_rules").strip().lower()
+
+
+def fire_debug_timeout(record: dict) -> None:
+    message = guardian_message(
+        event_type="NO_RESPONSE_TIMEOUT",
+        elder_id=record["elder_id"],
+        device_type="system",
+        data={
+            "event_id": record["event_id"],
+            "attempts": record["attempts"],
+            "timeout_kind": record["timeout_kind"],
+        },
+        scenario_code="debug_timer",
+        source_system="debug_timer",
+    )
+    with get_conn() as conn:
+        result = process_guardian_message(conn, message)
+    event = result.get("event") or {}
+    if event.get("status") == "CLARIFYING" and record["attempts"] < 2:
+        DEBUG_TIMERS.start(
+            event_id=record["event_id"],
+            seconds=record["seconds"],
+            attempts=2,
+            timeout_kind="clarification_response",
+            callback=fire_debug_timeout,
+            context={"elder_id": record["elder_id"]},
+        )
 
 
 def ensure_db() -> None:
@@ -69,7 +102,30 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def _route_get(self, path: str, query: dict[str, list[str]]) -> dict:
         elder_id = query.get("elder_id", ["E001"])[0]
+        if path == "/api/v1/debug/config":
+            return {
+                "conversation_provider": CONVERSATION_PROVIDER,
+                "tuya_agent_mode": CONVERSATION_PROVIDER == "tuya_agent",
+            }
+        if path == "/api/v1/debug/timers":
+            event_id = query.get("event_id", [""])[0]
+            return {"timer": DEBUG_TIMERS.get(event_id) if event_id else None}
         with get_conn() as conn:
+            if path == "/api/v1/debug/session":
+                event_id = query.get("event_id", [""])[0]
+                return debug_session_payload(conn, event_id)
+            if path == "/api/v1/voice/alerts/active":
+                event_id = query.get("event_id", [""])[0]
+                if not event_id:
+                    row = conn.execute(
+                        "SELECT id FROM events WHERE elder_id = ? AND risk_level = 'CRITICAL' "
+                        "AND status IN ('WAITING_FAMILY_CONFIRM', 'ESCALATED') "
+                        "ORDER BY updated_at DESC LIMIT 1",
+                        (elder_id,),
+                    ).fetchone()
+                    event_id = row["id"] if row else ""
+                event = NightCareAgent(conn).get_event(event_id) if event_id else None
+                return {"voice_alert": voice_alert_command(event)}
             if path == "/api/v1/dashboard":
                 selected_event_id = query.get("selected_event_id", [""])[0]
                 return dashboard_payload(conn, elder_id, selected_event_id)
@@ -124,6 +180,7 @@ class AppHandler(BaseHTTPRequestHandler):
 
     def _route_post(self, path: str, body: dict) -> dict:
         if path == "/api/v1/mock/reset":
+            DEBUG_TIMERS.cancel_all()
             seed_demo_data(reset=True)
             with get_conn() as conn:
                 return dashboard_payload(conn, "E001")
@@ -133,7 +190,11 @@ class AppHandler(BaseHTTPRequestHandler):
             health_agent = HealthAgent(conn)
             memory_agent = MemoryAgent(conn)
             if path == "/api/v1/guardian/messages":
-                return process_guardian_message(conn, body)
+                result = process_guardian_message(conn, body)
+                event = result.get("event") or {}
+                if event.get("status") in {"CLOSED", "WAITING_FAMILY_CONFIRM", "ESCALATED"}:
+                    DEBUG_TIMERS.cancel(event.get("id", ""))
+                return {**result, "voice_alert": voice_alert_command(event)}
             if path.startswith("/api/v1/guardian/scenarios/"):
                 scenario_code = path.split("/")[-1]
                 elder_id = body.get("elder_id", "E001")
@@ -141,7 +202,40 @@ class AppHandler(BaseHTTPRequestHandler):
                 results = [process_guardian_message(conn, message) for message in payload["messages"]]
                 return {**payload, "results": results}
             if path == "/api/v1/guardian/conversations/night-turn":
-                return handle_night_turn(conn, body)
+                if CONVERSATION_PROVIDER == "tuya_agent":
+                    raise ValueError(
+                        "Tuya Agent mode does not use conversation.py; submit the elder reply in Tuya online debug."
+                    )
+                result = handle_night_turn(conn, body)
+                if result.get("event_status") in {"CLOSED", "WAITING_FAMILY_CONFIRM", "ESCALATED"}:
+                    DEBUG_TIMERS.cancel(result.get("event_id", ""))
+                event = night_agent.get_event(result.get("event_id", ""))
+                return {**result, "voice_alert": voice_alert_command(event)}
+            if path == "/api/v1/debug/timers/start":
+                event_id = str(body.get("event_id") or "").strip()
+                event = night_agent.get_event(event_id)
+                if not event:
+                    raise ValueError("event not found")
+                if event["status"] not in {"WAITING_ELDER_CONFIRM", "CLARIFYING", "MONITORING_RETURN"}:
+                    raise ValueError("current event status does not need a debug timer")
+                seconds = float(body.get("seconds") or 15)
+                attempts = int(body.get("attempts") or (2 if event["status"] == "CLARIFYING" else 1))
+                timeout_kind = str(
+                    body.get("timeout_kind")
+                    or ("return_monitor" if event["status"] == "MONITORING_RETURN" else "elder_response")
+                )
+                timer = DEBUG_TIMERS.start(
+                    event_id=event_id,
+                    seconds=seconds,
+                    attempts=attempts,
+                    timeout_kind=timeout_kind,
+                    callback=fire_debug_timeout,
+                    context={"elder_id": event["elder_id"]},
+                )
+                return {"timer": timer, "event": event}
+            if path == "/api/v1/debug/timers/cancel":
+                event_id = str(body.get("event_id") or "").strip()
+                return {"timer": DEBUG_TIMERS.cancel(event_id)}
             if path == "/api/v1/messages":
                 message_type = body.get("message_type") or body.get("event_type")
                 if message_type in {"sensor_event", "POSSIBLE_LEAVE_BED", "SOS_BUTTON"}:
@@ -176,9 +270,18 @@ class AppHandler(BaseHTTPRequestHandler):
                 if action == "timeout":
                     return {"event": night_agent.simulate_timeout(event_id)}
                 if action == "return-to-bed":
-                    return {"event": night_agent.confirm_return_to_bed(event_id, source="web_demo")}
+                    event = night_agent.confirm_return_to_bed(event_id, source="web_demo")
+                    return {"event": event, "voice_alert": voice_alert_command(event)}
                 if action == "close":
-                    return {"event": night_agent.close_event(event_id)}
+                    event = night_agent.close_event(
+                        event_id,
+                        source="web_console",
+                        confirmed_by_human=True,
+                    )
+                    return {
+                        "event": event,
+                        "voice_alert": voice_alert_command(event),
+                    }
         raise ValueError(f"unknown route: {path}")
 
     def _read_json(self) -> dict:
@@ -264,6 +367,17 @@ def dashboard_payload(conn, elder_id: str, selected_event_id: str = "") -> dict:
         )
     if selected:
         selected = NightCareAgent(conn).get_event(selected["id"])
+    conversation_turns = []
+    if selected:
+        rows = conn.execute(
+            "SELECT * FROM conversation_turns WHERE event_id = ? ORDER BY created_at ASC, rowid ASC",
+            (selected["id"],),
+        ).fetchall()
+        for row in rows:
+            item = row_to_dict(row)
+            item["request"] = loads(item.pop("request_json"))
+            item["response"] = loads(item.pop("response_json"))
+            conversation_turns.append(item)
     counts = {
         "today_events": len(events),
         "waiting_elder": sum(1 for event in events if event["status"] == "WAITING_ELDER_CONFIRM"),
@@ -277,6 +391,8 @@ def dashboard_payload(conn, elder_id: str, selected_event_id: str = "") -> dict:
         "counts": counts,
         "events": events,
         "selected_event": selected,
+        "conversation_turns": conversation_turns,
+        "debug_timer": DEBUG_TIMERS.get(selected["id"]) if selected else None,
         "daily_report": health_agent.latest_report(elder_id, "daily"),
         "weekly_report": health_agent.latest_report(elder_id, "weekly"),
         "vitals": health_agent.latest_vitals(elder_id, 7),
@@ -284,6 +400,29 @@ def dashboard_payload(conn, elder_id: str, selected_event_id: str = "") -> dict:
         "memory_facets": memory_agent.facets(elder_id),
         "memory_recordings": memory_agent.latest_recordings(elder_id, 8),
         "contract": message_contract(),
+    }
+
+
+def debug_session_payload(conn, event_id: str) -> dict:
+    """Return only the data needed by the focused night-flow debug console."""
+    event = NightCareAgent(conn).get_event(event_id) if event_id else None
+    conversation_turns = []
+    if event:
+        rows = conn.execute(
+            "SELECT * FROM conversation_turns WHERE event_id = ? ORDER BY created_at ASC, rowid ASC",
+            (event_id,),
+        ).fetchall()
+        for row in rows:
+            item = row_to_dict(row)
+            item["request"] = loads(item.pop("request_json"))
+            item["response"] = loads(item.pop("response_json"))
+            conversation_turns.append(item)
+    return {
+        "conversation_provider": CONVERSATION_PROVIDER,
+        "event": event,
+        "conversation_turns": conversation_turns,
+        "debug_timer": DEBUG_TIMERS.get(event_id) if event else None,
+        "voice_alert": voice_alert_command(event),
     }
 
 
@@ -315,6 +454,7 @@ def parse_range_header(range_header: str, total_size: int) -> tuple[int, int]:
 
 def message_contract() -> dict:
     return {
+        "conversation_provider": CONVERSATION_PROVIDER,
         "ingest_endpoint": "POST /api/v1/messages",
         "guardian_message_endpoint": "POST /api/v1/guardian/messages",
         "guardian_scenario_endpoint": "POST /api/v1/guardian/scenarios/{scenario_code}",
@@ -376,8 +516,8 @@ def message_contract() -> dict:
 
 def main() -> None:
     ensure_db()
-    host = "127.0.0.1"
-    port = 8765
+    host = os.getenv("GUARDIAN_DEBUG_HOST", "127.0.0.1")
+    port = int(os.getenv("GUARDIAN_DEBUG_PORT", "8765"))
     httpd = ThreadingHTTPServer((host, port), AppHandler)
     print(f"Guardian Edge Agent running at http://{host}:{port}")
     httpd.serve_forever()

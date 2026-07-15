@@ -37,19 +37,20 @@ get_event_detail
 get_event_timeline
 submit_feedback
 handle_elder_reply
-night_turn
 request_emergency_help
 confirm_return_to_bed
 no_response_timeout
 record_device_action
 close_event
+ingest_guardian_event
+simulate_guardian_scenario
 ```
 
 推荐涂鸦智能体优先使用：
 
 - `get_active_event`：查询当前待处理事件。
 - `handle_elder_reply`：自动查找当前事件并写入老人反馈，适合“我没事 / 我去洗手间 / 我头晕 / 我需要帮助”等话术。
-- `night_turn`：直接提交老人原话，由本地会话适配层识别意图并更新事件。
+- `handle_elder_reply`：由涂鸦 LLM 先理解老人原话，再把标准意图和原话写入状态机。涂鸦 Agent 不使用本地 `night_turn/Conversation`。
 - `request_emergency_help`：老人明确求助时升级事件。
 - `confirm_return_to_bed`：设备或老人端确认已返床时关闭观察事件。
 - `no_response_timeout`：老人无响应超时时升级事件。
@@ -62,6 +63,16 @@ close_event
   "action": "night_turn",
   "elder_id": "E001",
   "original_text": "我去一下洗手间"
+}
+```
+
+涂鸦在线调试前创建模拟离床事件：
+
+```json
+{
+  "action": "simulate_guardian_scenario",
+  "elder_id": "E001",
+  "scenario_code": "normal_bathroom"
 }
 ```
 

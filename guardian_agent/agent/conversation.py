@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import uuid
 from typing import Any
 
+from .db import dumps, now_iso
 from .night import NightCareAgent
 
 
@@ -70,25 +72,56 @@ def handle_night_turn(conn, payload: dict[str, Any]) -> dict[str, Any]:
         feedback_type=classification["feedback_type"],
         original_text=text,
         source=source,
+        confidence=classification["confidence"],
     )
     reply_text = _reply_text(classification["intent"], classification["requires_clarification"])
     tool_calls = ["get_active_event", "submit_elder_feedback"] if not payload.get("event_id") else ["submit_elder_feedback"]
-    return {
-        "intent": classification["intent"],
-        "feedback_type": classification["feedback_type"],
-        "confidence": classification["confidence"],
-        "symptoms": classification["symptoms"],
-        "requires_clarification": classification["requires_clarification"],
-        "analysis": classification["analysis"],
+    agent_result = {
+        "contract_version": "1.0",
         "elder_id": elder_id,
         "event_id": event_id,
-        "session_id": session_id,
+        "intent": classification["intent"],
+        "confidence": classification["confidence"],
+        "requires_clarification": classification["requires_clarification"],
         "event_status": event["status"],
         "risk_level": event["risk_level"],
         "reply_text": reply_text,
         "tool_calls": tool_calls,
+        "reason": classification["analysis"],
+    }
+    response = {
+        **agent_result,
+        "session_id": session_id,
+        "feedback_type": classification["feedback_type"],
+        "symptoms": classification["symptoms"],
+        "analysis": classification["analysis"],
+        "agent_result": agent_result,
+        "debug": {
+            "engine": "conversation_rules",
+            "temporary_agent_substitute": True,
+            "normalized_text": text.replace(" ", ""),
+        },
         "event": event,
     }
+    conn.execute(
+        """
+        INSERT INTO conversation_turns
+        (id, event_id, elder_id, session_id, source, request_json, response_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            f"turn_{uuid.uuid4().hex[:12]}",
+            event_id,
+            elder_id,
+            session_id,
+            source,
+            dumps({"elder_id": elder_id, "event_id": event_id, "session_id": session_id, "text": text, "source": source}),
+            dumps(response),
+            now_iso(),
+        ),
+    )
+    conn.commit()
+    return response
 
 
 def _intent(

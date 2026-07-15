@@ -1,5 +1,7 @@
 # Guardian MCP 接入涂鸦与公网部署 README
 
+> **2026-07-15 版本提示**：本地新版 MCP 已调整为 `list_elders`、`night_care_workflow`、`health_report_workflow` 三个聚合工具，并补充了模拟 Guardian 场景及日报周报流程。当前公网冒烟测试仍返回旧工具版本，必须先发布本地更新包并只重启 `guardian-mcp.service`，再在涂鸦平台刷新工具列表。新版 Agent Prompt 和搭建步骤见 `guardian_agent/tuya/GUARDIAN_CARE_AGENT_PROMPT.md` 与 `guardian_agent/tuya/TUYA_AGENT_SETUP.md`。
+
 这份文档给团队成员使用，说明当前 Guardian MCP 是什么、涂鸦平台应该怎么配置、MCP 里有哪些工具，以及它后续如何和 hjky-server、MQTT、Web 看板配合。
 
 ## 先看这里：当前涂鸦 MCP 已经部署好了
@@ -107,6 +109,7 @@ D:\wlw\guardian_agent_update.tar.gz
 
 ```powershell
 scp D:\wlw\guardian_agent_update.tar.gz root@121.43.247.31:/tmp/guardian_agent_update.tar.gz
+scp "D:\wlw\guardian_agent_update_20260715.tar.gz" root@121.43.247.31:/tmp/guardian_agent_update.tar.gz
 ```
 
 如果使用 MobaXterm，也可以直接把 `guardian_agent_update.tar.gz` 拖到服务器 `/tmp` 目录。
@@ -207,6 +210,14 @@ export GUARDIAN_MCP_AUTH_MODE=query
 export GUARDIAN_MCP_TEST_URL=https://wesley-anthony-motorcycles-fitting.trycloudflare.com/mcp
 
 cd /opt/guardian-agent
+
+# 发布包不会携带 Windows 虚拟环境；服务器首次部署或目录被替换后需创建。
+if [ ! -x .venv/bin/python ]; then
+  python3 -m venv .venv
+  .venv/bin/python -m pip install --upgrade pip
+  .venv/bin/python -m pip install -r requirements.txt
+fi
+
 .venv/bin/python tests/mcp_smoke.py
 ```
 

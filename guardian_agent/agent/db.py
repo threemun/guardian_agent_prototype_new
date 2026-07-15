@@ -155,6 +155,19 @@ def init_db(reset: bool = False) -> None:
                 FOREIGN KEY (event_id) REFERENCES events(id)
             );
 
+            CREATE TABLE IF NOT EXISTS conversation_turns (
+                id TEXT PRIMARY KEY,
+                event_id TEXT NOT NULL,
+                elder_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                source TEXT NOT NULL,
+                request_json TEXT NOT NULL,
+                response_json TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                FOREIGN KEY (event_id) REFERENCES events(id),
+                FOREIGN KEY (elder_id) REFERENCES elders(id)
+            );
+
             CREATE TABLE IF NOT EXISTS notifications (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 event_id TEXT,

@@ -14,13 +14,8 @@ API_KEY = os.getenv("GUARDIAN_MCP_API_KEY", "").strip()
 AUTH_MODE = os.getenv("GUARDIAN_MCP_AUTH_MODE", "header").strip().lower()
 EXPECTED_TOOLS = {
     "list_elders",
-    "get_active_event",
-    "get_event_detail",
-    "get_event_timeline",
-    "submit_elder_feedback",
-    "request_emergency_help",
-    "record_device_action",
-    "close_event",
+    "night_care_workflow",
+    "health_report_workflow",
 }
 
 
@@ -52,15 +47,23 @@ async def smoke_test() -> None:
                     raise AssertionError(f"missing MCP tools: {sorted(missing)}")
 
                 result = await session.call_tool(
-                    "get_active_event",
-                    arguments={"elder_id": "E001"},
+                    "night_care_workflow",
+                    arguments={"action": "get_active_event", "elder_id": "E001", "confidence": ""},
                 )
                 if result.isError:
-                    raise AssertionError(f"get_active_event failed: {result.content}")
+                    raise AssertionError(f"night_care_workflow failed: {result.content}")
+
+                report_result = await session.call_tool(
+                    "health_report_workflow",
+                    arguments={"action": "weekly_report", "elder_id": "E001"},
+                )
+                if report_result.isError:
+                    raise AssertionError(f"health_report_workflow failed: {report_result.content}")
 
                 print("MCP initialization: OK")
                 print(f"Discovered tools: {', '.join(sorted(tool_names))}")
-                print("get_active_event: OK")
+                print("night_care_workflow: OK")
+                print("health_report_workflow: OK")
 
 
 if __name__ == "__main__":

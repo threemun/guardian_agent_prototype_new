@@ -1,0 +1,25 @@
+[Unit]
+Description=Guardian night-care debug console
+After=network-online.target guardian-mcp.service
+Wants=network-online.target guardian-mcp.service
+
+[Service]
+Type=simple
+User=guardian-agent
+Group=guardian-agent
+WorkingDirectory=/opt/guardian-agent
+Environment=GUARDIAN_CONVERSATION_PROVIDER=tuya_agent
+Environment=GUARDIAN_DEBUG_HOST=127.0.0.1
+Environment=GUARDIAN_DEBUG_PORT=8765
+ExecStart=/opt/guardian-agent/.venv/bin/python /opt/guardian-agent/server.py
+Restart=on-failure
+RestartSec=3
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/opt/guardian-agent
+
+[Install]
+WantedBy=multi-user.target

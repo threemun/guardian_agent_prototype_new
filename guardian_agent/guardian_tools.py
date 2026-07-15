@@ -1,15 +1,21 @@
 from __future__ import annotations
 
+import json
+import uuid
 from typing import Any
 
 from agent.conversation import handle_night_turn
-from agent.db import get_conn, init_db, row_to_dict
+from agent.contracts import ElderIntent
+from agent.db import dumps, get_conn, init_db, now_iso, row_to_dict
 from agent.health import HealthAgent
 from agent.night import NightCareAgent
 from agent.seed import seed_demo_data
+from agent.message import process_guardian_message
+from agent.voice import voice_alert_command
+from simulator.scenarios import scenario_payload
 
 
-VALID_FEEDBACK_TYPES = {"ok", "bathroom", "drink", "dizzy", "need_help"}
+VALID_FEEDBACK_TYPES = {intent.value for intent in ElderIntent}
 VALID_NIGHT_WORKFLOW_ACTIONS = {
     "list_elders",
     "get_active_event",
@@ -23,6 +29,8 @@ VALID_NIGHT_WORKFLOW_ACTIONS = {
     "no_response_timeout",
     "record_device_action",
     "close_event",
+    "ingest_guardian_event",
+    "simulate_guardian_scenario",
 }
 VALID_HEALTH_WORKFLOW_ACTIONS = {
     "daily_report",
@@ -108,6 +116,7 @@ def submit_elder_feedback(
     original_text: str = "",
     source: str = "tuya_agent",
     elder_id: str = "",
+    confidence: float | str | None = None,
 ) -> dict[str, Any]:
     """Apply a normalized elder response to an existing Guardian event."""
     _require_text(event_id, "event_id")
@@ -125,15 +134,33 @@ def submit_elder_feedback(
             raise ValueError("event_id does not belong to elder_id")
         if event["status"] == "CLOSED":
             raise ValueError("event is already closed")
+        normalized_confidence = _normalize_optional_confidence(confidence)
+        normalized_source = source.strip() or "tuya_agent"
         updated = agent.apply_feedback(
             event_id,
             feedback_type,
             original_text=original_text.strip(),
-            source=source.strip() or "tuya_agent",
+            source=normalized_source,
+            confidence=normalized_confidence,
+        )
+        agent_result = _build_agent_result(
+            updated,
+            requested_feedback_type=feedback_type,
+            confidence=normalized_confidence,
+        )
+        _record_agent_turn(
+            conn,
+            event=updated,
+            original_text=original_text.strip(),
+            source=normalized_source,
+            agent_result=agent_result,
         )
         return {
             "accepted": True,
             "event": updated,
+            "voice_alert": voice_alert_command(updated),
+            "reply_text": agent_result["reply_text"],
+            "agent_result": agent_result,
             "message": "老人反馈已写入 Guardian 事件时间线。",
         }
 
@@ -190,8 +217,13 @@ def close_event(event_id: str) -> dict[str, Any]:
             raise ValueError(f"event not found: {event_id}")
         if event["status"] == "CLOSED":
             return {"closed": True, "event": event, "message": "事件此前已经关闭。"}
-        updated = agent.close_event(event_id)
-        return {"closed": True, "event": updated, "message": "事件已关闭并归档。"}
+        updated = agent.close_event(event_id, source="tuya_agent", confirmed_by_human=False)
+        return {
+            "closed": True,
+            "event": updated,
+            "voice_alert": voice_alert_command(updated),
+            "message": "事件已关闭并归档。",
+        }
 
 
 def night_care_workflow(
@@ -204,6 +236,10 @@ def night_care_workflow(
     device_action: str = "",
     device_success: bool = True,
     device_detail: str = "",
+    confidence: float | str | None = None,
+    timeout_attempts: int = 1,
+    scenario_code: str = "",
+    guardian_message_json: str = "",
 ) -> dict[str, Any]:
     """
     One Tuya-facing workflow tool for night-care events.
@@ -212,6 +248,9 @@ def night_care_workflow(
     get_event_timeline, submit_feedback, handle_elder_reply, night_turn,
     request_emergency_help, confirm_return_to_bed, no_response_timeout,
     record_device_action, close_event.
+
+    handle_elder_reply resolves the elder's active event when event_id is empty,
+    so conversational agents should call it directly without a prior query.
     """
     normalized_action = _normalize_action(action, VALID_NIGHT_WORKFLOW_ACTIONS, "night workflow action")
 
@@ -237,6 +276,7 @@ def night_care_workflow(
                 feedback_type=feedback_type,
                 original_text=original_text,
                 source=source,
+                confidence=_normalize_optional_confidence(confidence),
             ),
         }
     if normalized_action == "handle_elder_reply":
@@ -251,6 +291,7 @@ def night_care_workflow(
                 feedback_type=feedback_type,
                 original_text=original_text,
                 source=source,
+                confidence=_normalize_optional_confidence(confidence),
             ),
         }
     if normalized_action == "night_turn":
@@ -297,11 +338,16 @@ def night_care_workflow(
     if normalized_action == "no_response_timeout":
         target_event_id = event_id.strip() or _active_event_id(elder_id)
         with get_conn() as conn:
-            event = NightCareAgent(conn).simulate_timeout(target_event_id)
+            event = NightCareAgent(conn).simulate_timeout(
+                target_event_id,
+                attempts=max(1, int(timeout_attempts or 1)),
+                source=source,
+            )
             return {
                 "workflow": "night_care",
                 "action": normalized_action,
                 "event": event,
+                "voice_alert": voice_alert_command(event),
                 "message": "无响应超时已写入 Guardian 事件时间线。",
             }
     if normalized_action == "record_device_action":
@@ -321,6 +367,36 @@ def night_care_workflow(
     if normalized_action == "close_event":
         target_event_id = event_id.strip() or _active_event_id(elder_id)
         return {"workflow": "night_care", "action": normalized_action, **close_event(target_event_id)}
+    if normalized_action == "ingest_guardian_event":
+        _require_text(guardian_message_json, "guardian_message_json")
+        try:
+            message = json.loads(guardian_message_json)
+        except json.JSONDecodeError as exc:
+            raise ValueError("guardian_message_json must be valid JSON") from exc
+        if not isinstance(message, dict):
+            raise ValueError("guardian_message_json must contain one JSON object")
+        with get_conn() as conn:
+            result = process_guardian_message(conn, message)
+        event = result.get("event") or {}
+        return {
+            "workflow": "night_care",
+            "action": normalized_action,
+            **result,
+            "voice_alert": voice_alert_command(event),
+        }
+    if normalized_action == "simulate_guardian_scenario":
+        _require_text(scenario_code, "scenario_code")
+        payload = scenario_payload(scenario_code.strip(), elder_id)
+        with get_conn() as conn:
+            results = [process_guardian_message(conn, message) for message in payload["messages"]]
+        return {
+            "workflow": "night_care",
+            "action": normalized_action,
+            "scenario_code": payload["scenario_code"],
+            "expectation": payload["expectation"],
+            "results": results,
+            "message": "模拟场景的标准硬件消息已进入 Guardian 状态机。",
+        }
 
     raise ValueError(f"unsupported night workflow action: {action}")
 
@@ -485,6 +561,98 @@ def _normalize_bool(value: bool | str | int) -> bool:
     if isinstance(value, str):
         return value.strip().lower() in {"1", "true", "yes", "y", "ok", "success", "succeeded"}
     return bool(value)
+
+
+def _normalize_optional_confidence(value: float | str | None) -> float | None:
+    if value is None or value == "":
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("confidence must be empty or a number between 0 and 1") from exc
+    if not 0 <= parsed <= 1:
+        raise ValueError("confidence must be between 0 and 1")
+    return parsed
+
+
+def _build_agent_result(
+    event: dict[str, Any],
+    requested_feedback_type: str,
+    confidence: float | None,
+) -> dict[str, Any]:
+    feedback_type = requested_feedback_type
+    feedback_steps = [item for item in event.get("timeline", []) if item.get("step_type") == "feedback"]
+    if feedback_steps:
+        feedback_type = feedback_steps[-1].get("result", {}).get("feedback_type") or feedback_type
+
+    status = event.get("status", "")
+    if status in {"WAITING_FAMILY_CONFIRM", "ESCALATED"}:
+        reply_text = "检测到您存在安全问题，我已联系您的子女。"
+    elif status == "CLARIFYING":
+        reply_text = "您现在有没有头晕、疼痛，或者需要我联系家人？"
+    else:
+        reply_text = {
+            "bathroom": "好的，您慢点走，注意脚下，我会留意您是否安全返床。",
+            "drink": "好的，您慢点走，注意脚下，我会留意您是否安全返床。",
+            "ok": "好的，请您慢慢走，我会继续留意您的安全。",
+        }.get(feedback_type, "好的，我已经记录，会继续留意您的安全。")
+
+    return {
+        "contract_version": "1.0",
+        "provider": "tuya_agent",
+        "elder_id": event.get("elder_id", ""),
+        "event_id": event.get("id", ""),
+        "intent": feedback_type,
+        "feedback_type": feedback_type,
+        "confidence": confidence,
+        "requires_clarification": status == "CLARIFYING",
+        "event_status": status,
+        "risk_level": event.get("risk_level", ""),
+        "reply_text": reply_text,
+        "tool_calls": ["night_care_workflow.handle_elder_reply"],
+        "reason": event.get("description", ""),
+    }
+
+
+def _record_agent_turn(
+    conn,
+    event: dict[str, Any],
+    original_text: str,
+    source: str,
+    agent_result: dict[str, Any],
+) -> None:
+    request = {
+        "elder_id": event.get("elder_id", ""),
+        "event_id": event.get("id", ""),
+        "text": original_text,
+        "source": source,
+    }
+    response = {
+        **agent_result,
+        "agent_result": agent_result,
+        "debug": {
+            "engine": "tuya_agent_mcp",
+            "temporary_agent_substitute": False,
+        },
+    }
+    conn.execute(
+        """
+        INSERT INTO conversation_turns
+        (id, event_id, elder_id, session_id, source, request_json, response_json, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            f"turn_{uuid.uuid4().hex[:12]}",
+            event.get("id", ""),
+            event.get("elder_id", ""),
+            f"tuya-{event.get('elder_id', '')}",
+            source,
+            dumps(request),
+            dumps(response),
+            now_iso(),
+        ),
+    )
+    conn.commit()
 
 
 def _normalize_limit(limit: int) -> int:

@@ -185,6 +185,7 @@ def clear_demo_tables(conn) -> None:
     existing = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()}
     tables = [
         "notifications",
+        "conversation_turns",
         "decisions",
         "events",
         "raw_messages",

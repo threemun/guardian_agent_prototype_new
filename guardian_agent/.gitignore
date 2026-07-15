@@ -10,3 +10,5 @@
 *.deb
 *.tar
 tools/cloudflared.exe
+__pycache__/
+*.py[cod]
