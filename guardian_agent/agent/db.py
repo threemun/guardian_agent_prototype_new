@@ -118,7 +118,8 @@ def init_db(reset: bool = False) -> None:
                 elder_id TEXT NOT NULL,
                 payload_json TEXT NOT NULL,
                 received_at TEXT NOT NULL,
-                processed_status TEXT NOT NULL
+                processed_status TEXT NOT NULL,
+                result_json TEXT NOT NULL DEFAULT '{}'
             );
 
             CREATE TABLE IF NOT EXISTS events (
@@ -238,6 +239,10 @@ def init_db(reset: bool = False) -> None:
 
 
 def ensure_schema(conn: sqlite3.Connection) -> None:
+    raw_message_columns = {row[1] for row in conn.execute("PRAGMA table_info(raw_messages)").fetchall()}
+    if "result_json" not in raw_message_columns:
+        conn.execute("ALTER TABLE raw_messages ADD COLUMN result_json TEXT NOT NULL DEFAULT '{}'")
+
     """Small forward migrations for local prototype databases."""
     columns = {row["name"] for row in conn.execute("PRAGMA table_info(memory_segments)").fetchall()}
     if "memory_date" not in columns:

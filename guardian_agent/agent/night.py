@@ -355,6 +355,43 @@ class NightCareAgent:
         ).fetchall()
         return rows_to_dicts(rows)
 
+    def record_input_message(
+        self,
+        event_id: str,
+        message: dict[str, Any],
+        prepend: bool = False,
+    ) -> None:
+        """Keep the normalized input visible in the event decision timeline."""
+
+        result = {
+            "schema_version": message["schema_version"],
+            "message_id": message["message_id"],
+            "source_system": message["source_system"],
+            "device_type": message["device_type"],
+            "device_id": message["device_id"],
+            "event_type": message["event_type"],
+            "occurred_at": message["occurred_at"],
+            "raw_payload": message["raw_payload"],
+        }
+        title = f"接收 GuardianMessage：{message['event_type']}"
+        description = f"收到来自 {message['source_system']} 的标准化输入，message_id={message['message_id']}。"
+        if not prepend:
+            self._add_step(event_id, "input", title, description, "GuardianMessageIngress", result)
+            return
+
+        self.conn.execute(
+            "UPDATE decisions SET step_order = step_order + 1 WHERE event_id = ?",
+            (event_id,),
+        )
+        self.conn.execute(
+            """
+            INSERT INTO decisions
+            (event_id, step_order, step_type, title, description, tool_name, result_json, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (event_id, 1, "input", title, description, "GuardianMessageIngress", dumps(result), now_iso()),
+        )
+
     def _elder(self, elder_id: str) -> dict[str, Any]:
         row = self.conn.execute("SELECT * FROM elders WHERE id = ?", (elder_id,)).fetchone()
         elder = row_to_dict(row)
