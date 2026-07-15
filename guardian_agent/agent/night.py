@@ -8,6 +8,7 @@ from .db import dumps, loads, now_iso, row_to_dict, rows_to_dicts
 
 STATUS_LABELS = {
     "WAITING_ELDER_CONFIRM": "等待老人确认",
+    "CLARIFYING": "追问确认",
     "WAITING_FAMILY_CONFIRM": "等待子女确认",
     "MONITORING_RETURN": "观察返床",
     "ESCALATED": "已升级",
@@ -200,6 +201,7 @@ class NightCareAgent:
             "drink": ("老人反馈：喝水", "记录起夜原因，短时观察即可。"),
             "dizzy": ("老人反馈：头晕", "老人反馈头晕，升级为紧急关注。"),
             "need_help": ("老人反馈：需要帮助", "老人主动请求帮助，通知子女与护理人员。"),
+            "unknown": ("老人反馈：未明确", "老人回答不明确，进入一次追问确认。"),
         }
         title, desc = feedback_map.get(feedback_type, ("老人反馈", "已记录老人端反馈。"))
         self._add_step(
@@ -220,6 +222,9 @@ class NightCareAgent:
             self._update_event(event_id, status="WAITING_FAMILY_CONFIRM", risk_level="CRITICAL", description=desc)
             self._add_step(event_id, "tool", "通知子女端", "已升级为紧急确认。", "NotifyTool")
             self._notify_family(event_id, event["elder"]["primary_contact"], "老人需要关注", desc)
+        elif feedback_type == "unknown":
+            self._update_event(event_id, status="CLARIFYING", risk_level="WARNING", description=desc)
+            self._add_step(event_id, "plan", "追问老人意图", "仅追问一次；如仍无明确反馈，则升级给子女确认。", "ElderAskTool")
         self.conn.commit()
         return self.get_event(event_id)
 
@@ -260,6 +265,67 @@ class NightCareAgent:
         )
         self._add_step(event_id, "tool", "通知子女端", "已推送无响应超时提醒。", "NotifyTool")
         self._notify_family(event_id, event["elder"]["primary_contact"], "无响应超时", "老人端未按时反馈，请尽快确认。")
+        self.conn.commit()
+        return self.get_event(event_id)
+
+    def confirm_return_to_bed(
+        self,
+        event_id: str,
+        source: str = "guardian_message",
+        detail: str = "设备确认老人已返床。",
+    ) -> dict[str, Any]:
+        event = self.get_event(event_id)
+        if not event:
+            raise ValueError("event not found")
+        self._add_step(
+            event_id,
+            "observe",
+            "确认返床",
+            detail,
+            "ReturnMonitor",
+            {"source": source, "status_before": event["status"]},
+        )
+        if event["risk_level"] == "CRITICAL" and event["status"] in {"WAITING_FAMILY_CONFIRM", "ESCALATED"}:
+            self._add_step(
+                event_id,
+                "guardrail",
+                "高风险保持人工确认",
+                "设备已检测到返床，但事件此前已升级，仍保留给家属或护理人员确认。",
+                "CaseTool",
+            )
+        else:
+            self._update_event(
+                event_id,
+                status="CLOSED",
+                risk_level="INFO",
+                closed=True,
+                description="设备确认老人已返床，观察结束并归档。",
+            )
+            self._add_step(event_id, "close", "返床后关闭事件", "返床信号已确认，事件自动关闭归档。", "CaseTool")
+        self.conn.commit()
+        return self.get_event(event_id)
+
+    def escalate_event(
+        self,
+        event_id: str,
+        reason: str,
+        source: str = "guardian_message",
+        status: str = "ESCALATED",
+    ) -> dict[str, Any]:
+        event = self.get_event(event_id)
+        if not event:
+            raise ValueError("event not found")
+        self._add_step(
+            event_id,
+            "guardrail",
+            "高风险升级",
+            reason,
+            "RiskGuardrail",
+            {"source": source, "status_before": event["status"], "risk_before": event["risk_level"]},
+        )
+        self._update_event(event_id, status=status, risk_level="CRITICAL", description=reason)
+        self._add_step(event_id, "tool", "通知子女端", "高风险事件已推送给子女或护理人员确认。", "NotifyTool")
+        self._notify_family(event_id, event["elder"]["primary_contact"], "高风险事件需确认", reason)
         self.conn.commit()
         return self.get_event(event_id)
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from agent.conversation import handle_night_turn
 from agent.db import get_conn, init_db, row_to_dict
 from agent.health import HealthAgent
 from agent.night import NightCareAgent
@@ -9,6 +10,30 @@ from agent.seed import seed_demo_data
 
 
 VALID_FEEDBACK_TYPES = {"ok", "bathroom", "drink", "dizzy", "need_help"}
+VALID_NIGHT_WORKFLOW_ACTIONS = {
+    "list_elders",
+    "get_active_event",
+    "get_event_detail",
+    "get_event_timeline",
+    "submit_feedback",
+    "handle_elder_reply",
+    "night_turn",
+    "request_emergency_help",
+    "confirm_return_to_bed",
+    "no_response_timeout",
+    "record_device_action",
+    "close_event",
+}
+VALID_HEALTH_WORKFLOW_ACTIONS = {
+    "daily_report",
+    "weekly_report",
+    "get_daily_report",
+    "generate_daily_report",
+    "get_weekly_report",
+    "generate_weekly_report",
+    "get_recent_vitals",
+    "refresh_all_reports",
+}
 HEALTH_REPORT_NOTE = "本报告仅用于日常健康管理参考，不能替代医生诊断；如老人出现明显不适，请及时联系医护人员。"
 
 
@@ -169,6 +194,137 @@ def close_event(event_id: str) -> dict[str, Any]:
         return {"closed": True, "event": updated, "message": "事件已关闭并归档。"}
 
 
+def night_care_workflow(
+    action: str,
+    elder_id: str = "E001",
+    event_id: str = "",
+    feedback_type: str = "",
+    original_text: str = "",
+    source: str = "tuya_agent",
+    device_action: str = "",
+    device_success: bool = True,
+    device_detail: str = "",
+) -> dict[str, Any]:
+    """
+    One Tuya-facing workflow tool for night-care events.
+
+    Supported actions: list_elders, get_active_event, get_event_detail,
+    get_event_timeline, submit_feedback, handle_elder_reply, night_turn,
+    request_emergency_help, confirm_return_to_bed, no_response_timeout,
+    record_device_action, close_event.
+    """
+    normalized_action = _normalize_action(action, VALID_NIGHT_WORKFLOW_ACTIONS, "night workflow action")
+
+    if normalized_action == "list_elders":
+        return {"workflow": "night_care", "action": normalized_action, **list_elders()}
+    if normalized_action == "get_active_event":
+        return {"workflow": "night_care", "action": normalized_action, **get_active_event(elder_id)}
+    if normalized_action == "get_event_detail":
+        _require_text(event_id, "event_id")
+        return {"workflow": "night_care", "action": normalized_action, "event": get_event_detail(event_id)}
+    if normalized_action == "get_event_timeline":
+        _require_text(event_id, "event_id")
+        return {"workflow": "night_care", "action": normalized_action, **get_event_timeline(event_id)}
+    if normalized_action == "submit_feedback":
+        _require_text(event_id, "event_id")
+        _require_text(feedback_type, "feedback_type")
+        return {
+            "workflow": "night_care",
+            "action": normalized_action,
+            **submit_elder_feedback(
+                event_id=event_id,
+                elder_id=elder_id,
+                feedback_type=feedback_type,
+                original_text=original_text,
+                source=source,
+            ),
+        }
+    if normalized_action == "handle_elder_reply":
+        _require_text(feedback_type, "feedback_type")
+        target_event_id = event_id.strip() or _active_event_id(elder_id)
+        return {
+            "workflow": "night_care",
+            "action": normalized_action,
+            **submit_elder_feedback(
+                event_id=target_event_id,
+                elder_id=elder_id,
+                feedback_type=feedback_type,
+                original_text=original_text,
+                source=source,
+            ),
+        }
+    if normalized_action == "night_turn":
+        _require_text(original_text, "original_text")
+        with get_conn() as conn:
+            return {
+                "workflow": "night_care",
+                "action": normalized_action,
+                **handle_night_turn(
+                    conn,
+                    {
+                        "elder_id": elder_id,
+                        "event_id": event_id,
+                        "text": original_text,
+                        "source": source,
+                    },
+                ),
+            }
+    if normalized_action == "request_emergency_help":
+        target_event_id = event_id.strip() or _active_event_id(elder_id)
+        return {
+            "workflow": "night_care",
+            "action": normalized_action,
+            **request_emergency_help(
+                event_id=target_event_id,
+                elder_id=elder_id,
+                original_text=original_text or "老人请求帮助",
+            ),
+        }
+    if normalized_action == "confirm_return_to_bed":
+        target_event_id = event_id.strip() or _active_event_id(elder_id)
+        with get_conn() as conn:
+            event = NightCareAgent(conn).confirm_return_to_bed(
+                target_event_id,
+                source=source,
+                detail=original_text or "涂鸦或设备确认老人已返床。",
+            )
+            return {
+                "workflow": "night_care",
+                "action": normalized_action,
+                "event": event,
+                "message": "返床确认已写入 Guardian 事件时间线。",
+            }
+    if normalized_action == "no_response_timeout":
+        target_event_id = event_id.strip() or _active_event_id(elder_id)
+        with get_conn() as conn:
+            event = NightCareAgent(conn).simulate_timeout(target_event_id)
+            return {
+                "workflow": "night_care",
+                "action": normalized_action,
+                "event": event,
+                "message": "无响应超时已写入 Guardian 事件时间线。",
+            }
+    if normalized_action == "record_device_action":
+        _require_text(event_id, "event_id")
+        _require_text(device_action, "device_action")
+        return {
+            "workflow": "night_care",
+            "action": normalized_action,
+            **record_device_action(
+                event_id=event_id,
+                action=device_action,
+                success=_normalize_bool(device_success),
+                detail=device_detail,
+                source=source,
+            ),
+        }
+    if normalized_action == "close_event":
+        target_event_id = event_id.strip() or _active_event_id(elder_id)
+        return {"workflow": "night_care", "action": normalized_action, **close_event(target_event_id)}
+
+    raise ValueError(f"unsupported night workflow action: {action}")
+
+
 def get_daily_report(elder_id: str = "E001") -> dict[str, Any]:
     """Return the latest stored daily health report for an elder."""
     _require_text(elder_id, "elder_id")
@@ -233,6 +389,59 @@ def get_recent_vitals(elder_id: str = "E001", limit: int = 7) -> dict[str, Any]:
         }
 
 
+def health_report_workflow(
+    action: str = "weekly_report",
+    elder_id: str = "E001",
+    report_date: str = "",
+    week_end: str = "",
+    limit: int = 7,
+) -> dict[str, Any]:
+    """
+    One Tuya-facing workflow tool for daily/weekly health reports.
+
+    Supported actions: daily_report, weekly_report, get_daily_report,
+    generate_daily_report, get_weekly_report, generate_weekly_report,
+    get_recent_vitals, refresh_all_reports.
+    """
+    normalized_action = _normalize_action(action, VALID_HEALTH_WORKFLOW_ACTIONS, "health workflow action")
+
+    if normalized_action == "daily_report":
+        report = get_daily_report(elder_id)
+        if not report.get("found"):
+            report = generate_daily_report(elder_id, report_date)
+        return {"workflow": "health_report", "action": normalized_action, **report}
+    if normalized_action == "weekly_report":
+        report = get_weekly_report(elder_id)
+        if not report.get("found"):
+            report = generate_weekly_report(elder_id, week_end)
+        return {"workflow": "health_report", "action": normalized_action, **report}
+    if normalized_action == "get_daily_report":
+        return {"workflow": "health_report", "action": normalized_action, **get_daily_report(elder_id)}
+    if normalized_action == "generate_daily_report":
+        return {"workflow": "health_report", "action": normalized_action, **generate_daily_report(elder_id, report_date)}
+    if normalized_action == "get_weekly_report":
+        return {"workflow": "health_report", "action": normalized_action, **get_weekly_report(elder_id)}
+    if normalized_action == "generate_weekly_report":
+        return {"workflow": "health_report", "action": normalized_action, **generate_weekly_report(elder_id, week_end)}
+    if normalized_action == "get_recent_vitals":
+        return {"workflow": "health_report", "action": normalized_action, **get_recent_vitals(elder_id, limit)}
+    if normalized_action == "refresh_all_reports":
+        daily = generate_daily_report(elder_id, report_date)
+        weekly = generate_weekly_report(elder_id, week_end)
+        vitals = get_recent_vitals(elder_id, limit)
+        return {
+            "workflow": "health_report",
+            "action": normalized_action,
+            "elder_id": elder_id,
+            "daily_report": daily,
+            "weekly_report": weekly,
+            "recent_vitals": vitals,
+            "report_note": HEALTH_REPORT_NOTE,
+        }
+
+    raise ValueError(f"unsupported health workflow action: {action}")
+
+
 def _report_payload(report: dict[str, Any]) -> dict[str, Any]:
     return {
         "found": True,
@@ -252,6 +461,30 @@ def _report_payload(report: dict[str, Any]) -> dict[str, Any]:
 def _require_text(value: str, field_name: str) -> None:
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field_name} is required")
+
+
+def _active_event_id(elder_id: str) -> str:
+    active = get_active_event(elder_id)
+    if not active.get("found"):
+        raise ValueError(f"no active event found for elder_id: {elder_id}")
+    return active["event"]["id"]
+
+
+def _normalize_action(action: str, allowed: set[str], field_name: str) -> str:
+    _require_text(action, field_name)
+    normalized = action.strip()
+    if normalized not in allowed:
+        allowed_text = ", ".join(sorted(allowed))
+        raise ValueError(f"invalid {field_name}; expected one of: {allowed_text}")
+    return normalized
+
+
+def _normalize_bool(value: bool | str | int) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "ok", "success", "succeeded"}
+    return bool(value)
 
 
 def _normalize_limit(limit: int) -> int:

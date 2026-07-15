@@ -106,6 +106,49 @@ class GuardianToolsTest(unittest.TestCase):
         self.assertEqual(result["count"], 5)
         self.assertTrue(all(item["elder_id"] == "E003" for item in result["items"]))
 
+    def test_night_care_workflow_handles_elder_reply(self) -> None:
+        result = guardian_tools.night_care_workflow(
+            action="handle_elder_reply",
+            elder_id="E002",
+            feedback_type="drink",
+            original_text="我起来喝口水",
+        )
+
+        self.assertEqual(result["workflow"], "night_care")
+        self.assertTrue(result["accepted"])
+        self.assertEqual(result["event"]["status"], "MONITORING_RETURN")
+
+    def test_night_care_workflow_can_query_timeline(self) -> None:
+        event = guardian_tools.get_active_event("E001")["event"]
+
+        result = guardian_tools.night_care_workflow(
+            action="get_event_timeline",
+            event_id=event["id"],
+        )
+
+        self.assertEqual(result["workflow"], "night_care")
+        self.assertEqual(result["event_id"], event["id"])
+        self.assertGreater(len(result["items"]), 0)
+
+    def test_health_report_workflow_returns_weekly_report(self) -> None:
+        result = guardian_tools.health_report_workflow(action="weekly_report", elder_id="E001")
+
+        self.assertEqual(result["workflow"], "health_report")
+        self.assertTrue(result["found"])
+        self.assertEqual(result["report_type"], "weekly")
+
+    def test_health_report_workflow_refreshes_all_reports(self) -> None:
+        result = guardian_tools.health_report_workflow(
+            action="refresh_all_reports",
+            elder_id="E003",
+            limit=3,
+        )
+
+        self.assertEqual(result["workflow"], "health_report")
+        self.assertEqual(result["daily_report"]["report_type"], "daily")
+        self.assertEqual(result["weekly_report"]["report_type"], "weekly")
+        self.assertEqual(result["recent_vitals"]["count"], 3)
+
 
 if __name__ == "__main__":
     unittest.main()

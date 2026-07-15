@@ -84,108 +84,61 @@ def list_elders() -> dict:
 
 
 @mcp.tool()
-def get_active_event(elder_id: str = "E001") -> dict:
-    """Get the newest non-closed Guardian care event for an elder."""
-    return guardian_tools.get_active_event(elder_id)
-
-
-@mcp.tool()
-def get_event_detail(event_id: str) -> dict:
-    """Get one Guardian event with its current risk, status and full timeline."""
-    return guardian_tools.get_event_detail(event_id)
-
-
-@mcp.tool()
-def get_event_timeline(event_id: str) -> dict:
-    """Get the auditable decision timeline for a Guardian event."""
-    return guardian_tools.get_event_timeline(event_id)
-
-
-@mcp.tool()
-def submit_elder_feedback(
-    event_id: str,
-    feedback_type: str,
+def night_care_workflow(
+    action: str,
+    elder_id: str = "E001",
+    event_id: str = "",
+    feedback_type: str = "",
     original_text: str = "",
     source: str = "tuya_agent",
-    elder_id: str = "",
+    device_action: str = "",
+    device_success: bool = True,
+    device_detail: str = "",
 ) -> dict:
     """
-    Submit an elder response to an existing event.
+    Run the night-care workflow through one tool.
 
-    feedback_type must be one of: ok, bathroom, drink, dizzy, need_help.
-    Use original_text to preserve what the elder actually said.
+    action options:
+    list_elders, get_active_event, get_event_detail, get_event_timeline,
+    submit_feedback, handle_elder_reply, request_emergency_help,
+    record_device_action, close_event.
     """
-    return guardian_tools.submit_elder_feedback(
+    return guardian_tools.night_care_workflow(
+        action=action,
+        elder_id=elder_id,
         event_id=event_id,
         feedback_type=feedback_type,
         original_text=original_text,
         source=source,
-        elder_id=elder_id,
+        device_action=device_action,
+        device_success=device_success,
+        device_detail=device_detail,
     )
 
 
 @mcp.tool()
-def request_emergency_help(
-    event_id: str,
-    original_text: str = "老人请求帮助",
-    elder_id: str = "",
+def health_report_workflow(
+    action: str = "weekly_report",
+    elder_id: str = "E001",
+    report_date: str = "",
+    week_end: str = "",
+    limit: int = 7,
 ) -> dict:
-    """Escalate an event after the elder explicitly asks for immediate help."""
-    return guardian_tools.request_emergency_help(event_id, original_text, elder_id)
+    """
+    Run daily/weekly health report workflow through one tool.
 
-
-@mcp.tool()
-def record_device_action(
-    event_id: str,
-    action: str,
-    success: bool,
-    detail: str = "",
-    source: str = "tuya_agent",
-) -> dict:
-    """Record a Tuya scene or device action result in the Guardian timeline."""
-    return guardian_tools.record_device_action(
-        event_id=event_id,
+    action options:
+    daily_report, weekly_report, get_daily_report, generate_daily_report,
+    get_weekly_report, generate_weekly_report, get_recent_vitals,
+    refresh_all_reports. Advisory only, not medical diagnosis.
+    """
+    return guardian_tools.health_report_workflow(
         action=action,
-        success=success,
-        detail=detail,
-        source=source,
+        elder_id=elder_id,
+        report_date=report_date,
+        week_end=week_end,
+        limit=limit,
     )
-
-
-@mcp.tool()
-def close_event(event_id: str) -> dict:
-    """Close and archive an event only after the situation is confirmed resolved."""
-    return guardian_tools.close_event(event_id)
-
-
-@mcp.tool()
-def get_daily_report(elder_id: str = "E001") -> dict:
-    """Get the latest stored daily health report for an elder."""
-    return guardian_tools.get_daily_report(elder_id)
-
-
-@mcp.tool()
-def generate_daily_report(elder_id: str = "E001", report_date: str = "") -> dict:
-    """Generate a daily health report from current vitals. Advisory only."""
-    return guardian_tools.generate_daily_report(elder_id, report_date)
-
-
-@mcp.tool()
-def get_weekly_report(elder_id: str = "E001") -> dict:
-    """Get the latest stored weekly health report for an elder."""
-    return guardian_tools.get_weekly_report(elder_id)
-
-
-@mcp.tool()
-def generate_weekly_report(elder_id: str = "E001", week_end: str = "") -> dict:
-    """Generate a weekly health report from current vitals. Advisory only."""
-    return guardian_tools.generate_weekly_report(elder_id, week_end)
-
-
-@mcp.tool()
-def get_recent_vitals(elder_id: str = "E001", limit: int = 7) -> dict:
-    """Get recent vitals used by the daily and weekly health report tools."""
-    return guardian_tools.get_recent_vitals(elder_id, limit)
 
 
 @contextlib.asynccontextmanager
